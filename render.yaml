@@ -1,0 +1,20 @@
+# Publicação no Render (plano gratuito). No Render: New > Blueprint > escolha este repositório.
+services:
+  - type: web
+    name: readback
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        value: eastus
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-5-5
+      - key: APP_PASSWORD
+        sync: false
