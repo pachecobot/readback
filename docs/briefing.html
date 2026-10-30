@@ -1,0 +1,414 @@
+<title>Briefing do Readback</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: documento de briefing em coluna única, com telas desenhadas em miniatura (painel de rádio azul-marinho sobre papel de carta VFR) */
+:root {
+  --paper: #edf1f5; --surface: #ffffff; --surface-2: #f5f7fa; --ink: #14213d; --ink-2: #4a5873; --line: #ccd5df;
+  --accent: #a3165f; --blue: #1f5fa8; --good: #1b7343; --warn: #9a6512; --bad: #b8322a;
+  --panel: #14213d; --panel-ink: #e9eef6; --panel-dim: #93a3c0; --lcd: #3f9b5f; --lcd-bg: #0a1a12; --lcd-ink: #c7f0d2;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0c1322; --surface: #141d31; --surface-2: #1a2540; --ink: #e5ebf3; --ink-2: #a3b0c6; --line: #2a3654;
+    --accent: #ef6aa7; --blue: #82b4f2; --good: #5fcf8f; --warn: #e6b65c; --bad: #ff7f73;
+    --panel: #070c17; --panel-ink: #e9eef6; --panel-dim: #7d8cab; --lcd: #5fcf8f; --lcd-bg: #04110a; --lcd-ink: #9fe8b6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0c1322; --surface: #141d31; --surface-2: #1a2540; --ink: #e5ebf3; --ink-2: #a3b0c6; --line: #2a3654;
+  --accent: #ef6aa7; --blue: #82b4f2; --good: #5fcf8f; --warn: #e6b65c; --bad: #ff7f73;
+  --panel: #070c17; --panel-ink: #e9eef6; --panel-dim: #7d8cab; --lcd: #5fcf8f; --lcd-bg: #04110a; --lcd-ink: #9fe8b6; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font: 16px/1.6 var(--font-body); margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 32px 64px; display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(2.4rem, 7vw, 3.6rem); text-transform: uppercase; letter-spacing: 0.04em; }
+h2 { font-size: 1.9rem; }
+h3 { font-size: 1.25rem; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); }
+.muted { color: var(--ink-2); }
+section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.head { display: flex; flex-direction: column; gap: 12px; }
+.head .meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag { font-family: var(--font-mono); font-size: 0.78rem; border: 1px solid var(--line); background: var(--surface); padding: 3px 10px; border-radius: 999px; }
+.lead { font-size: 1.12rem; }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card ul, .card ol { margin: 0; padding-left: 20px; }
+.card li { margin-bottom: 4px; }
+
+/* Telas em miniatura */
+.screen { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+.screen-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); gap: 8px; flex-wrap: wrap; }
+.screen-bar b { font-family: var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs span { font-family: var(--font-display); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; color: var(--ink-2); }
+.tabs span.on { background: var(--ink); color: var(--paper); }
+.screen-body { display: grid; grid-template-columns: 0.9fr 1.6fr; gap: 12px; padding: 12px; }
+.mini { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; min-width: 0; }
+.mini .opt { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 4px 8px; }
+.mini .opt.sel { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.radio { background: var(--panel); color: var(--panel-ink); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; }
+.radio-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lcd { background: var(--lcd-bg); color: var(--lcd-ink); font-family: var(--font-mono); border-radius: 6px; padding: 4px 10px; font-size: 1.1rem; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #4ade80; display: inline-block; margin-right: 6px; }
+.btn-call { background: #dc2626; color: #fff; border-radius: 999px; padding: 6px 14px; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; align-self: flex-start; }
+.bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.bars i { height: 5px; border-radius: 3px; background: #22314f; position: relative; overflow: hidden; }
+.bars i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--lcd-ink); }
+.bubble { border-radius: 10px; padding: 6px 10px; font-size: 0.82rem; max-width: 90%; }
+.bubble.ai { background: var(--surface-2); border: 1px solid var(--line); }
+.bubble.me { background: var(--surface-2); border: 1px solid var(--line); align-self: flex-end; }
+.w-g { color: var(--good); font-weight: 700; }
+.w-y { color: var(--warn); font-weight: 700; }
+.w-r { color: var(--bad); font-weight: 700; text-decoration: underline wavy; }
+.callout { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--surface); font: 700 0.72rem var(--font-mono); flex: none; }
+.c-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+/* Tabelas */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 0.93rem; min-width: 620px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+td code, p code, li code { font-family: var(--font-mono); font-size: 0.85em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+.pill { display: inline-block; font: 600 0.75rem var(--font-mono); padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.g { color: var(--good); } .pill.y { color: var(--warn); } .pill.r { color: var(--bad); } .pill.b { color: var(--blue); } .pill.n { color: var(--ink-2); }
+.scale { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.scale div { padding: 10px 12px; background: var(--surface); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.scale div + div { border-left: 1px solid var(--line); }
+.scale b { font-family: var(--font-mono); }
+
+.flow { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.prio { font: 700 0.72rem var(--font-mono); padding: 2px 7px; border-radius: 4px; color: var(--surface); }
+.prio.p1 { background: var(--bad); } .prio.p2 { background: var(--warn); } .prio.p3 { background: var(--blue); }
+.done { color: var(--good); font-weight: 700; }
+
+@media (max-width: 700px) {
+  .screen-body { grid-template-columns: 1fr; }
+  .scale { grid-template-columns: 1fr; }
+  .scale div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
+</style>
+
+<div class="wrap">
+
+<header class="head">
+  <span class="eyebrow">Briefing de produto · versão 1.1</span>
+  <h1>Readback</h1>
+  <p class="lead">Treinador de inglês por voz para quem está no curso de piloto e para viagens. O aluno liga para a IA, conversa em inglês, recebe nota de pronúncia som por som e correções na hora, e treina depois os próprios erros.</p>
+  <div class="meta">
+    <span class="tag">Aluno: piloto privado (PP), Brasil</span>
+    <span class="tag">Meta: ICAO nível 4 · SDEA</span>
+    <span class="tag">Web app · computador e celular</span>
+  </div>
+</header>
+
+<section>
+  <span class="eyebrow">1 · Princípios</span>
+  <h2>O que o aplicativo precisa garantir</h2>
+  <div class="grid2">
+    <div class="card"><h3>Falar muito</h3><p class="muted">Respostas curtas da IA (1 a 3 frases), sempre terminando com uma pergunta ou instrução. O aluno é quem mais fala.</p></div>
+    <div class="card"><h3>Corrigir sem travar</h3><p class="muted">Na voz, só a correção mais importante. Na tela, todas as correções detalhadas, em português.</p></div>
+    <div class="card"><h3>Medir de verdade</h3><p class="muted">A nota de pronúncia vem do áudio, som por som (Azure). A nota ICAO usa os 6 critérios oficiais, e a final é a menor delas.</p></div>
+    <div class="card"><h3>Fechar o ciclo</h3><p class="muted">Todo erro vira um cartão de revisão. O resumo da chamada leva direto ao treino daquilo que errou.</p></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">2 · Mapa do aplicativo</span>
+  <h2>Quatro abas</h2>
+  <div class="tbl"><table>
+    <tr><th>Aba</th><th>Para que serve</th><th>Quando usar</th></tr>
+    <tr><td><b>Chamada</b></td><td>Conversa por voz em tempo real com a IA, em 8 cenários. Correção e nota a cada fala.</td><td>Treino principal, 10 a 15 min por dia</td></tr>
+    <tr><td><b>Pronúncia</b></td><td>Ouvir e repetir frases-modelo, com nota por palavra e por som.</td><td>Aquecimento e reforço de sons difíceis</td></tr>
+    <tr><td><b>Revisão</b></td><td>Caderno de erros com repetição espaçada e histórico das chamadas.</td><td>5 min por dia, antes da chamada</td></tr>
+    <tr><td><b>Referência</b></td><td>Alfabeto fonético, números da fonia, escala ICAO e glossário, com áudio.</td><td>Consulta rápida</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">3 · Layout</span>
+  <h2>Tela de Chamada</h2>
+  <p class="muted">No computador, o plano de voo fica à esquerda e o rádio com a conversa à direita. No celular, tudo vira uma coluna: plano de voo, rádio e conversa.</p>
+  <div class="screen" role="img" aria-label="Desenho da tela de chamada">
+    <div class="screen-bar"><b>Readback</b><div class="tabs"><span class="on">Chamada</span><span>Pronúncia</span><span>Revisão</span><span>Referência</span></div></div>
+    <div class="screen-body">
+      <div class="mini">
+        <div class="c-row"><span class="callout">1</span><b>Plano de voo</b></div>
+        <div class="opt sel">Solo: táxi e Ground</div>
+        <div class="opt">Torre e circuito</div>
+        <div class="opt">Situações anormais</div>
+        <div class="opt">Simulado SDEA</div>
+        <div class="c-row"><span class="callout">2</span>Nível · Prefixo · Voz · Velocidade</div>
+        <div class="c-row"><span class="callout">3</span>Corrigir em voz · Modo rádio (PTT) · Correções na tela</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div class="radio">
+          <div class="radio-top"><span class="callout">4</span><span class="lcd">121.850</span><span><span class="dot"></span>Ouvindo… fale em inglês</span></div>
+          <i style="color:var(--panel-dim)">I want taxi, the weather is good</i>
+          <div class="c-row"><span class="callout">5</span><span class="btn-call">Desligar</span><span style="border:1px solid #3a4a6b;border-radius:6px;padding:3px 8px">Interromper e falar</span></div>
+          <div class="c-row"><span class="callout">6</span><span style="color:var(--panel-dim)">ICAO estimado · Nível 3</span></div>
+          <div class="bars"><i style="--w:50%"></i><i style="--w:66%"></i><i style="--w:66%"></i><i style="--w:66%"></i><i style="--w:66%"></i><i style="--w:66%"></i></div>
+        </div>
+        <div class="mini">
+          <div class="c-row"><span class="callout">7</span><b>Conversa</b></div>
+          <div class="bubble ai">PT-KLM, Marte Ground, say your request.</div>
+          <div class="bubble me"><span class="w-g">I</span> <span class="w-r">taxi</span> <span class="w-r">weather</span> <span class="w-y">good</span><br><span class="pill y">Pronúncia 73</span> <span class="pill g">Fluência 86</span></div>
+          <div class="bubble me"><b style="color:var(--bad)">Correções</b> · I want taxi → <b style="color:var(--good)">Request taxi</b></div>
+          <div class="c-row"><span class="callout">8</span>Digitar · Enviar · Encerrar com resumo</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="tbl"><table>
+    <tr><th>#</th><th>Elemento</th><th>Função</th></tr>
+    <tr><td><span class="callout">1</span></td><td>Cenários</td><td>Escolhe a situação: táxi, torre, navegação, emergência, simulado SDEA, aeroporto, cidade, conversa livre. Fica travado durante a chamada.</td></tr>
+    <tr><td><span class="callout">2</span></td><td>Ajustes da chamada</td><td>Nível (básico, intermediário, avançado), prefixo falado no rádio, voz da IA e velocidade da fala.</td></tr>
+    <tr><td><span class="callout">3</span></td><td>Chaves</td><td>Correção falada ligada ou desligada; modo rádio, em que se segura para falar; mostrar ou esconder correções na tela.</td></tr>
+    <tr><td><span class="callout">4</span></td><td>Rádio</td><td>Frequência do cenário (Ground 121.850, Torre 118.700, Emergência 121.500), estado atual e legenda ao vivo do que o aluno está falando.</td></tr>
+    <tr><td><span class="callout">5</span></td><td>Botões da chamada</td><td>Chamar ou Desligar. Interromper corta a fala da IA e já passa a ouvir. No modo rádio aparece "Segure para falar".</td></tr>
+    <tr><td><span class="callout">6</span></td><td>Painel ICAO</td><td>Média dos 6 critérios na chamada. A barra fica vermelha abaixo de 4. O nível é o menor dos seis.</td></tr>
+    <tr><td><span class="callout">7</span></td><td>Conversa</td><td>Falas da IA com "Ouvir de novo"; falas do aluno com as palavras coloridas pela nota; cartão de correções embaixo.</td></tr>
+    <tr><td><span class="callout">8</span></td><td>Barra inferior</td><td>Digitar quando não puder falar. "Encerrar com resumo" pede à IA um fechamento e mostra o cartão de resumo.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">4 · Fluxo</span>
+  <h2>Do início ao encerramento da ligação</h2>
+  <div class="flow">
+<pre class="mermaid">
+flowchart TD
+  A([Toca em Chamar]) --> B[Libera áudio e microfone<br/>tela fica acesa]
+  B --> C[IA abre a cena<br/>ex.: Marte Ground]
+  C --> D[IA fala frase por frase]
+  D --> E{Modo rádio?}
+  E -- Não --> F[Abrindo o microfone…<br/>Ouvindo]
+  E -- Sim --> G[Aluno segura o botão<br/>ou a barra de espaço]
+  F --> H[Aluno fala<br/>legenda ao vivo]
+  G --> H
+  H --> I[Pausa de ~1 s<br/>ou solta o botão]
+  I --> J[Nota de pronúncia aparece<br/>palavras coloridas]
+  J --> K[IA pensa com a nota<br/>e o texto]
+  K --> L[IA responde em voz<br/>e corrige 1 palavra]
+  L --> M[Cartão de correções<br/>vai para a Revisão]
+  M --> D
+  D -. Interromper .-> F
+  L --> N{Encerrar?}
+  N -- Desligar --> P[Resumo da chamada]
+  N -- Encerrar com resumo --> O[IA fala o fechamento<br/>e os 3 pontos-chave]
+  O --> P
+  P --> Q[Treinar os itens desta chamada]
+</pre>
+  </div>
+  <div class="tbl"><table>
+    <tr><th>Estado no rádio</th><th>Cor</th><th>O que está acontecendo</th><th>O que o aluno pode fazer</th></tr>
+    <tr><td>Pronto para chamar</td><td><span class="pill n">cinza</span></td><td>Nada em andamento</td><td>Escolher cenário e tocar em Chamar</td></tr>
+    <tr><td>Abrindo o microfone…</td><td><span class="pill y">amarelo</span></td><td>Conectando ao reconhecimento de voz</td><td>Esperar meio segundo antes de falar</td></tr>
+    <tr><td>Ouvindo… fale em inglês</td><td><span class="pill g">verde pulsando</span></td><td>Microfone aberto</td><td>Falar; uma pausa envia a fala</td></tr>
+    <tr><td>Transmitindo…</td><td><span class="pill g">verde</span></td><td>Modo rádio com botão pressionado</td><td>Soltar o botão para enviar</td></tr>
+    <tr><td>Pensando…</td><td><span class="pill y">amarelo</span></td><td>IA preparando a resposta</td><td>Aguardar (resposta começa em ~1 s)</td></tr>
+    <tr><td>Falando…</td><td><span class="pill r">rosa pulsando</span></td><td>IA falando</td><td>Interromper e falar</td></tr>
+    <tr><td>Erro + mensagem</td><td><span class="pill r">vermelho</span></td><td>Algo falhou (ver seção 7)</td><td>Ler a mensagem, corrigir e tocar em Chamar</td></tr>
+    <tr><td>Chamada encerrada</td><td><span class="pill n">cinza</span></td><td>Resumo exibido</td><td>Treinar os erros ou chamar de novo</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">5 · Acertos, erros e correções</span>
+  <h2>Como o aluno sabe se acertou</h2>
+  <div class="scale">
+    <div><b style="color:var(--good)">80–100 · verde</b><span class="muted">Acertou. Som claro e inteligível.</span></div>
+    <div><b style="color:var(--warn)">60–79 · amarelo</b><span class="muted">Entendível, mas pode melhorar.</span></div>
+    <div><b style="color:var(--bad)">0–59 · vermelho ondulado</b><span class="muted">Erro. Toque para ver o som errado.</span></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Na fala do aluno (na hora)</h3>
+      <ul>
+        <li>Cada palavra colorida pela nota medida no áudio.</li>
+        <li>Notas de <b>pronúncia, exatidão, fluência e entonação</b>.</li>
+        <li>Toque na palavra: nota de cada som, "você fez /d/ no lugar de /ð/", dica de boca e língua, botões <b>Ouvir certo</b> e <b>Devagar</b>.</li>
+        <li>Palavra pulada aparece riscada; pausa no meio da frase é avisada.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Na resposta da IA</h3>
+      <ul>
+        <li>Corrige em voz a pior palavra: "Quick tip: weather… say it again".</li>
+        <li>Na fonia, cobra o readback: "Negative, read back holding point".</li>
+        <li>Elogia quando a palavra melhora na fala seguinte.</li>
+        <li>Cartão em português: <span style="color:var(--bad)">Correções</span>, <span style="color:var(--blue)">Pronúncia</span>, <span style="color:var(--accent)">Fraseologia</span> e elogio.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Exceção da fonia ICAO</h3>
+      <p class="muted">"Tree", "fife", "niner" e "tou-sand" são a forma correta no rádio e não contam como erro nos treinos de aviação. No treino "Sons difíceis", o "th" é cobrado.</p>
+    </div>
+    <div class="card">
+      <h3>Para onde vão os erros</h3>
+      <p class="muted">Correções e palavras abaixo de 60 viram cartões na <b>Revisão</b>. Acertou (nota 80 ou mais), o cartão volta em 1, 3, 7, 16 e 35 dias. Errou, volta amanhã.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">6 · Encerramento</span>
+  <h2>Resumo da chamada</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>O que aparece</h3>
+      <ul>
+        <li>Cenário, minutos e número de falas.</li>
+        <li><b>Nível ICAO estimado</b> (verde a partir do 4).</li>
+        <li><b>Falas sem correção</b>: os acertos da chamada, por exemplo 7/10.</li>
+        <li><b>Pronúncia média</b> e a diferença em relação à última chamada no mesmo cenário.</li>
+        <li><b>Palavras para treinar</b>, as 5 piores, com botão de ouvir.</li>
+        <li>Botão <b>Treinar os itens desta chamada</b>, que abre a aba Pronúncia já com eles.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Duas formas de encerrar</h3>
+      <ul>
+        <li><b>Desligar</b>: para tudo na hora e mostra o resumo.</li>
+        <li><b>Encerrar com resumo</b>: a IA fala um fechamento de duas frases e lista os 3 pontos mais importantes, e depois o resumo aparece.</li>
+      </ul>
+      <p class="muted">A chamada fica salva no Histórico quando o aluno falou pelo menos uma vez.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">7 · Botões</span>
+  <h2>Todos os botões e o que fazem</h2>
+  <div class="tbl"><table>
+    <tr><th>Botão</th><th>Onde</th><th>O que faz</th><th>Quando aparece</th></tr>
+    <tr><td>Chamar / Desligar</td><td>Rádio</td><td>Inicia a ligação ou encerra na hora com resumo</td><td>Sempre</td></tr>
+    <tr><td>Interromper e falar</td><td>Rádio</td><td>Corta a voz da IA e abre o microfone</td><td>Enquanto a IA fala</td></tr>
+    <tr><td>Segure para falar</td><td>Rádio</td><td>Transmite enquanto pressionado, como o PTT do avião; a barra de espaço também funciona</td><td>Modo rádio ligado</td></tr>
+    <tr><td>Enviar</td><td>Barra inferior</td><td>Envia texto digitado (sem nota de pronúncia)</td><td>Sempre</td></tr>
+    <tr><td>Encerrar com resumo</td><td>Barra inferior</td><td>IA fecha a chamada e mostra o resumo</td><td>Durante a chamada</td></tr>
+    <tr><td>Ouvir de novo</td><td>Fala da IA</td><td>Repete a última fala</td><td>Em cada resposta</td></tr>
+    <tr><td>Ouvir · Ouvir certo · Devagar</td><td>Correções e palavras</td><td>Toca a forma correta, normal ou lenta</td><td>Em cada correção</td></tr>
+    <tr><td>Palavra colorida</td><td>Fala do aluno</td><td>Abre o detalhe por som com dica</td><td>Com Azure ligado</td></tr>
+    <tr><td>Treinar os itens desta chamada</td><td>Resumo</td><td>Leva à aba Pronúncia com os erros da chamada</td><td>Fim da chamada</td></tr>
+    <tr><td>Categorias</td><td>Pronúncia</td><td>Alfabeto, números, solo, torre, navegação, emergência, sons difíceis, viagem, meus erros</td><td>Sempre</td></tr>
+    <tr><td>Ouvir · Ouvir devagar</td><td>Pronúncia</td><td>Toca a frase-modelo</td><td>Sempre</td></tr>
+    <tr><td>Gravar minha voz</td><td>Pronúncia</td><td>Grava, mostra a nota 0–100 e as palavras coloridas; toque de novo para parar</td><td>Sempre</td></tr>
+    <tr><td>Anterior · Próxima</td><td>Pronúncia</td><td>Navega entre as frases</td><td>Sempre</td></tr>
+    <tr><td>Explicar com IA</td><td>Pronúncia</td><td>A IA explica em português como corrigir os sons errados</td><td>Depois de gravar</td></tr>
+    <tr><td>Treinar erros vencidos</td><td>Revisão</td><td>Abre os cartões do dia na aba Pronúncia</td><td>Quando há cartões vencidos</td></tr>
+    <tr><td>× (remover)</td><td>Revisão</td><td>Apaga um cartão</td><td>Em cada cartão</td></tr>
+    <tr><td>Apagar todos os dados</td><td>Revisão</td><td>Pede confirmação na própria tela e apaga histórico, erros e notas</td><td>Sempre</td></tr>
+    <tr><td>Letra ou número</td><td>Referência</td><td>Toca a pronúncia ICAO</td><td>Sempre</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">8 · Quando algo dá errado</span>
+  <h2>Erros e o que a tela diz</h2>
+  <div class="tbl"><table>
+    <tr><th>Situação</th><th>Mensagem ou comportamento</th></tr>
+    <tr><td>Microfone bloqueado</td><td>"O microfone foi bloqueado. Libere o microfone para este site nas configurações do navegador."</td></tr>
+    <tr><td>Sem chave da IA no servidor</td><td>"Chave da API não configurada…" e o treino de Pronúncia continua funcionando.</td></tr>
+    <tr><td>Chave da IA inválida</td><td>"Chave da API inválida. Confira ANTHROPIC_API_KEY."</td></tr>
+    <tr><td>Senha do site errada</td><td>"Senha incorreta." O campo de senha fica no Plano de voo.</td></tr>
+    <tr><td>Uso excessivo</td><td>"Muitas requisições. Espere um minuto." (limite por minuto para proteger os créditos)</td></tr>
+    <tr><td>Azure fora do ar ou sem chave</td><td>Volta sozinho para o reconhecimento e a voz do navegador; um aviso explica que a nota por som está desligada.</td></tr>
+    <tr><td>Navegador sem reconhecimento de voz e sem Azure</td><td>Aviso para usar Chrome ou Edge; dá para continuar digitando.</td></tr>
+    <tr><td>IA recusa responder</td><td>"A IA recusou responder esta mensagem. Tente reformular."</td></tr>
+    <tr><td>Encerrar enquanto a IA responde</td><td>A resposta é cancelada e a chamada termina normalmente (corrigido nesta revisão).</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">9 · Revisão completa</span>
+  <h2>O que foi verificado nesta versão</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Corrigido</h3>
+      <ul>
+        <li><span class="done">✓</span> Encerrar no meio da resposta travava a conversa.</li>
+        <li><span class="done">✓</span> No iPhone, "Ouvir" podia ficar mudo antes da primeira chamada.</li>
+        <li><span class="done">✓</span> "Ouvir" durante a fala da IA tocava duas vozes juntas.</li>
+        <li><span class="done">✓</span> O aluno podia falar antes do microfone abrir e perder o começo da frase: agora aparece "Abrindo o microfone…" e só depois "Ouvindo".</li>
+        <li><span class="done">✓</span> Avisos apareciam mesmo com o Azure ligado.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Adicionado</h3>
+      <ul>
+        <li><span class="done">✓</span> Cartão de resumo no fim da chamada, com acertos, erros e atalho para treinar.</li>
+        <li><span class="done">✓</span> Histórico com falas sem correção e pronúncia média.</li>
+        <li><span class="done">✓</span> Limite de uso por minuto no servidor.</li>
+        <li><span class="done">✓</span> Arquivo de publicação no Render e atalhos de iniciar com dois cliques.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Testes feitos</h3>
+      <p class="muted">Navegador automático no computador e no celular, tema claro e escuro, com a IA e o Azure simulados: chamada completa em mãos livres, nota por som, detalhe da palavra, resumo, treino de pronúncia, encerrar no meio da resposta. Nenhum erro nem tela cortada.</p>
+    </div>
+    <div class="card">
+      <h3>Falta testar</h3>
+      <p class="muted">Uso real com as chaves da Anthropic e do Azure, microfone e alto-falante de verdade, e o celular (Android e iPhone). Esse é o primeiro teste depois de criar as contas.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">10 · Próximas versões</span>
+  <h2>O que um aplicativo completo ainda precisa</h2>
+  <div class="tbl"><table>
+    <tr><th>Prioridade</th><th>Função</th><th>Por quê</th></tr>
+    <tr><td><span class="prio p1">P1</span></td><td>Teste de nivelamento na primeira abertura (3 min)</td><td>Começar no nível certo e ter uma nota de partida para comparar</td></tr>
+    <tr><td><span class="prio p1">P1</span></td><td>Painel de progresso: gráfico da nota ICAO e da pronúncia, dias seguidos, minutos por semana</td><td>Ver evolução motiva e mostra quando está pronto para o SDEA</td></tr>
+    <tr><td><span class="prio p1">P1</span></td><td>Teste de microfone com medidor de volume</td><td>Evita frustração com microfone mudo ou baixo</td></tr>
+    <tr><td><span class="prio p2">P2</span></td><td>Conta com login e dados na nuvem</td><td>Hoje os dados ficam só no navegador; trocar de celular perde o histórico</td></tr>
+    <tr><td><span class="prio p2">P2</span></td><td>Treino de escuta: ATIS e autorizações em velocidade real, com readback</td><td>Compreensão é um dos 6 critérios ICAO e o ponto fraco mais comum</td></tr>
+    <tr><td><span class="prio p2">P2</span></td><td>Lembrete diário no celular</td><td>Constância vale mais que sessões longas</td></tr>
+    <tr><td><span class="prio p2">P2</span></td><td>Tempo de pausa ajustável (quanto silêncio envia a fala)</td><td>Quem fala devagar é cortado no meio da frase</td></tr>
+    <tr><td><span class="prio p3">P3</span></td><td>Simulado SDEA com imagens para descrever</td><td>Igual à parte 2 da prova real</td></tr>
+    <tr><td><span class="prio p3">P3</span></td><td>Mais aeroportos e cartas (SBJD, SBKP, SBGR), voo IFR</td><td>Acompanhar a evolução do curso</td></tr>
+    <tr><td><span class="prio p3">P3</span></td><td>Relatório para o instrutor (PDF ou link)</td><td>Mostrar a evolução na escola de aviação</td></tr>
+    <tr><td><span class="prio p3">P3</span></td><td>Funcionar como app instalado, com abertura rápida offline</td><td>Sensação de aplicativo nativo</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">11 · Custos e dados</span>
+  <h2>Quanto custa e onde ficam os dados</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Custo mensal (30 chamadas de 15 min)</h3>
+      <ul>
+        <li>Azure, nota de pronúncia e vozes: <b>grátis</b> no plano F0 (5 h de fala por mês).</li>
+        <li>IA Claude Haiku 5.5: <b>≈ US$ 0,30</b>.</li>
+        <li>Render, para usar no celular: <b>grátis</b> (demora ~1 min para "acordar" depois de 15 min parado).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Privacidade</h3>
+      <ul>
+        <li>O histórico, os erros e as notas ficam só no navegador do aluno.</li>
+        <li>O áudio vai ao Azure só para gerar a nota; o texto da conversa vai à IA.</li>
+        <li>As chaves ficam no servidor, nunca no navegador. O site publicado pede senha.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
