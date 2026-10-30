@@ -4,18 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Readback</title>
-<meta name="theme-color" content="#14213d">
+<meta name="theme-color" content="#0b0a26">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Onest:wght@400;500;700&family=Martian+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div class="sky" aria-hidden="true"></div>
+
 <header class="top">
   <div class="brand">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 5v22M9 13l7-4 7 4M11 22l5-2 5 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16 6v20M9 13l7-4 7 4M11.5 21.5l4.5-2 4.5 2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <div>
       <h1>Readback</h1>
       <p>Inglês para aviação e viagens, por voz</p>
@@ -40,7 +42,7 @@
   <!-- CHAMADA -->
   <section id="tab-call" class="tab">
     <div class="call-layout">
-      <aside class="setup" id="setup">
+      <aside class="glass setup" id="setup">
         <h2>Plano de voo</h2>
         <div class="field">
           <span class="label">Cenário</span>
@@ -71,9 +73,9 @@
           </label>
         </div>
         <div class="toggles">
-          <label class="toggle"><input type="checkbox" id="voice-corrections" checked><span>Corrigir em voz durante a conversa</span></label>
-          <label class="toggle"><input type="checkbox" id="ptt"><span>Modo rádio: segurar para falar (PTT)</span></label>
-          <label class="toggle"><input type="checkbox" id="show-feedback" checked><span>Mostrar correções na tela</span></label>
+          <label class="toggle"><input type="checkbox" id="voice-corrections" checked><span class="switch" aria-hidden="true"></span><span>Corrigir em voz durante a conversa</span></label>
+          <label class="toggle"><input type="checkbox" id="ptt"><span class="switch" aria-hidden="true"></span><span>Modo rádio: segurar para falar (PTT)</span></label>
+          <label class="toggle"><input type="checkbox" id="show-feedback" checked><span class="switch" aria-hidden="true"></span><span>Mostrar correções na tela</span></label>
         </div>
         <label class="field" id="password-field" hidden>
           <span class="label">Senha do aplicativo</span>
@@ -82,12 +84,18 @@
       </aside>
 
       <div class="call">
-        <div class="radio">
-          <div class="freq">
-            <span class="freq-label" id="station-label">COM 1</span>
-            <span class="freq-value" id="freq-value">118.700</span>
+        <div class="radio glass">
+          <div class="radio-head">
+            <div class="freq">
+              <span class="freq-label" id="station-label">COM 1</span>
+              <span class="freq-value" id="freq-value">118.700</span>
+            </div>
+            <div class="icao-badge"><span>ICAO</span><b id="icao-overall">–</b></div>
           </div>
-          <div class="status" id="status" data-state="idle">Pronto para chamar</div>
+          <div class="orb-wrap">
+            <canvas id="orb" aria-hidden="true"></canvas>
+            <div class="status" id="status" data-state="idle">Pronto para chamar</div>
+          </div>
           <div class="live" id="live" aria-live="polite"></div>
           <div class="call-buttons">
             <button id="call-btn" class="call-btn" aria-label="Iniciar chamada">
@@ -98,19 +106,19 @@
             <button id="interrupt-btn" class="ghost" hidden>Interromper e falar</button>
           </div>
           <div class="icao" id="icao">
-            <div class="icao-head"><span>Estimativa ICAO da chamada</span><b id="icao-overall">–</b></div>
+            <div class="icao-head"><span>Estimativa ICAO da chamada</span></div>
             <div class="icao-bars" id="icao-bars"></div>
           </div>
         </div>
 
-        <div class="transcript" id="transcript">
+        <div class="transcript glass" id="transcript">
           <div class="empty" id="transcript-empty">
             <h3>Como funciona</h3>
             <ol>
-              <li>Escolha um cenário à esquerda, por exemplo <b>Solo: táxi e Ground</b>.</li>
+              <li>Escolha um cenário no plano de voo, por exemplo <b>Solo: táxi e Ground</b>.</li>
               <li>Toque em <b>Chamar</b> e permita o microfone. A IA começa a cena.</li>
-              <li>Responda falando em inglês. Ela entende, responde em voz e corrige você.</li>
-              <li>As correções e dicas de pronúncia aparecem aqui e vão para a aba <b>Revisão</b>.</li>
+              <li>Responda falando em inglês. Cada palavra ganha uma nota na hora.</li>
+              <li>A IA responde em voz e corrige você. Os erros vão para a <b>Revisão</b>.</li>
             </ol>
             <p class="hint">Use fone de ouvido para a IA não ouvir a própria voz.</p>
           </div>
@@ -132,19 +140,19 @@
       <p>Ouça a frase, grave a sua voz e veja a nota de cada palavra. Toque numa palavra vermelha para ver qual som saiu errado e como corrigir.</p>
       <div class="drill-cats" id="drill-cats"></div>
     </div>
-    <div class="drill-card" id="drill-card">
+    <div class="drill-card glass" id="drill-card">
       <div class="drill-meta"><span id="drill-pos"></span><span id="drill-best"></span></div>
       <p class="drill-say" id="drill-say"></p>
       <p class="drill-pt" id="drill-pt"></p>
       <div class="drill-actions">
         <button class="ghost" id="drill-listen">Ouvir</button>
         <button class="ghost" id="drill-slow">Ouvir devagar</button>
-        <button class="primary" id="drill-rec">Gravar minha voz</button>
+        <button class="primary rec" id="drill-rec">Gravar minha voz</button>
       </div>
       <div class="drill-result" id="drill-result" hidden>
-        <div class="score"><b id="drill-score">0</b><span>/100</span></div>
-        <div>
-          <p class="drill-diff" id="drill-diff"></p>
+        <div class="score" id="drill-score-box"><b id="drill-score">0</b><span>/100</span></div>
+        <div class="drill-res-body">
+          <div class="drill-diff" id="drill-diff"></div>
           <p class="drill-heard">Entendido: <span id="drill-heard"></span></p>
         </div>
       </div>
@@ -160,7 +168,7 @@
   <!-- REVISÃO -->
   <section id="tab-review" class="tab" hidden>
     <div class="review-grid">
-      <div>
+      <div class="glass pad">
         <h2>Caderno de erros</h2>
         <p class="muted">Cada correção das chamadas fica salva aqui. Treine as que estão vencidas: acertou, ela volta mais tarde; errou, volta amanhã.</p>
         <div class="review-actions">
@@ -169,7 +177,7 @@
         </div>
         <ul class="mistakes" id="mistakes"></ul>
       </div>
-      <div>
+      <div class="glass pad">
         <h2>Histórico</h2>
         <ul class="sessions" id="sessions"></ul>
         <button class="ghost danger" id="clear-data">Apagar todos os dados</button>
@@ -193,33 +201,38 @@
       <div>
         <h2>Números na fonia</h2>
         <div class="ref-table" id="ref-num"></div>
-        <h2>Escala ICAO (Doc 9835)</h2>
-        <p>Seis critérios: <b>pronúncia, estrutura, vocabulário, fluência, compreensão e interação</b>. A nota final é a <b>menor</b> das seis. O nível <b>4 (Operacional)</b> é o mínimo para operações internacionais; no Brasil a prova é o <b>SDEA</b> da ANAC, uma entrevista oral com temas de aviação.</p>
-        <table class="levels">
-          <tr><th>Nível</th><th>Nome</th><th>Na prática</th></tr>
-          <tr><td>6</td><td>Expert</td><td>Fala como nativo em qualquer situação.</td></tr>
-          <tr><td>5</td><td>Extended</td><td>Lida bem com o inesperado, raramente erra.</td></tr>
-          <tr><td>4</td><td>Operational</td><td>Comunica com segurança; erros raramente atrapalham o sentido.</td></tr>
-          <tr><td>3</td><td>Pre-operational</td><td>Comunica o rotineiro, mas trava no inesperado.</td></tr>
-          <tr><td>2</td><td>Elementary</td><td>Só frases decoradas.</td></tr>
-          <tr><td>1</td><td>Pre-elementary</td><td>Abaixo do elementar.</td></tr>
-        </table>
-        <h2>Palavras-chave da fonia</h2>
-        <dl class="glossary">
-          <dt>Roger</dt><dd>Recebi sua mensagem (não é "sim").</dd>
-          <dt>Wilco</dt><dd>Entendi e vou cumprir.</dd>
-          <dt>Affirm / Negative</dt><dd>Sim / Não. Evite "yes" e "no".</dd>
-          <dt>Say again</dt><dd>Repita. Nunca use "repeat".</dd>
-          <dt>Standby</dt><dd>Aguarde, vou chamar você.</dd>
-          <dt>Unable</dt><dd>Não consigo cumprir.</dd>
-          <dt>Read back</dt><dd>Repita a mensagem para confirmar.</dd>
-          <dt>Correction</dt><dd>Errei; o certo é…</dd>
-        </dl>
+        <div class="glass pad">
+          <h2>Escala ICAO (Doc 9835)</h2>
+          <p>Seis critérios: <b>pronúncia, estrutura, vocabulário, fluência, compreensão e interação</b>. A nota final é a <b>menor</b> das seis. O nível <b>4 (Operacional)</b> é o mínimo para operações internacionais; no Brasil a prova é o <b>SDEA</b> da ANAC, uma entrevista oral com temas de aviação.</p>
+          <table class="levels">
+            <tr><th>Nível</th><th>Nome</th><th>Na prática</th></tr>
+            <tr><td>6</td><td>Expert</td><td>Fala como nativo em qualquer situação.</td></tr>
+            <tr><td>5</td><td>Extended</td><td>Lida bem com o inesperado, raramente erra.</td></tr>
+            <tr><td>4</td><td>Operational</td><td>Comunica com segurança; erros raramente atrapalham o sentido.</td></tr>
+            <tr><td>3</td><td>Pre-operational</td><td>Comunica o rotineiro, mas trava no inesperado.</td></tr>
+            <tr><td>2</td><td>Elementary</td><td>Só frases decoradas.</td></tr>
+            <tr><td>1</td><td>Pre-elementary</td><td>Abaixo do elementar.</td></tr>
+          </table>
+        </div>
+        <div class="glass pad">
+          <h2>Palavras-chave da fonia</h2>
+          <dl class="glossary">
+            <dt>Roger</dt><dd>Recebi sua mensagem (não é "sim").</dd>
+            <dt>Wilco</dt><dd>Entendi e vou cumprir.</dd>
+            <dt>Affirm / Negative</dt><dd>Sim / Não. Evite "yes" e "no".</dd>
+            <dt>Say again</dt><dd>Repita. Nunca use "repeat".</dd>
+            <dt>Standby</dt><dd>Aguarde, vou chamar você.</dd>
+            <dt>Unable</dt><dd>Não consigo cumprir.</dd>
+            <dt>Read back</dt><dd>Repita a mensagem para confirmar.</dd>
+            <dt>Correction</dt><dd>Errei; o certo é…</dd>
+          </dl>
+        </div>
       </div>
     </div>
   </section>
 </main>
 
+<canvas id="fx" aria-hidden="true"></canvas>
 <script type="module" src="app.js"></script>
 </body>
 </html>

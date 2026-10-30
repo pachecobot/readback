@@ -1,5 +1,6 @@
 import { DRILLS, PHONETIC, NUMBERS } from "./data.js";
 import { createAzureListener, preloadAzure, summarizeForAI, tipFor, adjustForIcao, scoreClass } from "./pron.js";
+import { createOrb, createMicMeter, burstAt, countUp } from "./fx.js";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -497,7 +498,8 @@ function renderIcao(turns) {
     bar.append(head, track);
     bars.append(bar);
   }
-  $("#icao-overall").textContent = avg ? `Nível ${avg.overall}` : "–";
+  $("#icao-overall").textContent = avg ? String(avg.overall) : "–";
+  $(".icao-badge").classList.toggle("low", Boolean(avg) && avg.overall < 4);
 }
 renderIcao([]);
 
@@ -529,9 +531,23 @@ function gradeMistake(target, ok) {
 const call = { active: false, history: [], icao: [], speaker: null, listener: null, abort: null, ending: false, turns: 0, wakeLock: null, stats: null };
 const newStats = () => ({ spoken: 0, clean: 0, corrections: 0, pron: [], weak: new Map(), mistakes: [] });
 const statusEl = $("#status");
+const orb = createOrb($("#orb"));
+// O medidor do microfone anima a esfera enquanto o aluno fala.
+// No iPhone um segundo acesso ao microfone pode derrubar o reconhecimento, então lá a esfera anima sozinha.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let micMeter = null;
+async function openMeter() {
+  if (IOS || micMeter || !navigator.mediaDevices?.getUserMedia) return;
+  try { micMeter = await createMicMeter(); } catch {}
+}
+function closeMeter() {
+  micMeter?.stop();
+  micMeter = null;
+}
 function setStatus(state, text) {
   statusEl.dataset.state = state;
   statusEl.textContent = text;
+  orb.set(state === "idle" && call.active ? "idle" : state, state === "listening" && micMeter ? () => micMeter.level() : null);
 }
 function setLive(text) { $("#live").textContent = text || ""; }
 
@@ -856,6 +872,7 @@ async function startCall() {
   renderIcao([]);
   updateCallButtons();
   unlockAudio();
+  openMeter();
   try { call.wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
   await aiTurn("[START]", null);
 }
@@ -871,6 +888,7 @@ function stopAudioAndListening() {
 
 function finishCall() {
   stopAudioAndListening();
+  closeMeter();
   if (call.turns > 1) {
     const avg = icaoAverages(call.icao);
     const s = serverConfig.scenarios.find((x) => x.id === scenario);
@@ -938,6 +956,8 @@ function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
   }
   $("#transcript").append(card);
   scrollTranscript();
+  card.querySelectorAll(".sum-stat b").forEach((b) => { if (/^\d+$/.test(b.textContent)) countUp(b, Number(b.textContent)); });
+  if ((avg && avg.overall >= 4) || (st.spoken && st.clean / st.spoken >= 0.7)) setTimeout(() => burstAt(card.querySelector(".sum-stat")), 250);
 }
 
 $("#call-btn").addEventListener("click", () => (call.active ? finishCall() : startCall()));
@@ -1099,7 +1119,10 @@ $("#drill-rec").addEventListener("click", async () => {
     drill.lastHeard = best.h;
   }
   $("#drill-heard").textContent = `"${drill.lastHeard}"`;
-  $("#drill-score").textContent = score;
+  const box = $("#drill-score-box");
+  box.className = "score " + scoreClass(score);
+  countUp($("#drill-score"), score);
+  if (score >= 85) setTimeout(() => burstAt(box), 300);
   $("#drill-result").hidden = false;
   $("#drill-explain").disabled = false;
   store.data.best[item.say] = Math.max(store.data.best[item.say] || 0, score);
