@@ -31,7 +31,7 @@ export function preloadAzure(password) {
 
 // Mesmo formato do ouvinte do navegador: { result, stop, cancel }.
 // referenceText vazio = fala livre (conversa); preenchido = frase-alvo (treino).
-export function createAzureListener({ referenceText = "", onInterim, manual = false, silenceMs = 1100, password = "" } = {}) {
+export function createAzureListener({ referenceText = "", onInterim, onReady, manual = false, silenceMs = 1100, password = "" } = {}) {
   let rec = null;
   let finished = false;
   let stopRequested = false;
@@ -116,7 +116,10 @@ export function createAzureListener({ referenceText = "", onInterim, manual = fa
       }
     };
     rec.startContinuousRecognitionAsync(
-      () => { if (stopRequested) { stopRequested = false; stop(); } },
+      () => {
+        if (stopRequested) { stopRequested = false; stop(); return; }
+        onReady?.();
+      },
       (err) => fail(new Error("Não foi possível abrir o microfone: " + err)),
     );
   })().catch(fail);

@@ -182,7 +182,7 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 // O aviso de navegador só aparece se não houver Azure (ver loadConfig).
 
 // Escuta o aluno. Modo automático: encerra após um silêncio. Modo manual (PTT): encerra com stop().
-function createListener({ onInterim, silenceMs = 1400, manual = false } = {}) {
+function createListener({ onInterim, onReady, silenceMs = 1400, manual = false } = {}) {
   const rec = new SR();
   rec.lang = "en-US";
   rec.continuous = true;
@@ -249,6 +249,8 @@ function createListener({ onInterim, silenceMs = 1400, manual = false } = {}) {
       try { rec.start(); } catch {}
     }
   };
+  let started = false;
+  rec.onstart = () => { if (!started) { started = true; onReady?.(); } };
   rec.start();
   return {
     result,
@@ -524,7 +526,8 @@ function gradeMistake(target, ok) {
 }
 
 /* ---------- Chamada ---------- */
-const call = { active: false, history: [], icao: [], speaker: null, listener: null, abort: null, ending: false, turns: 0, wakeLock: null };
+const call = { active: false, history: [], icao: [], speaker: null, listener: null, abort: null, ending: false, turns: 0, wakeLock: null, stats: null };
+const newStats = () => ({ spoken: 0, clean: 0, corrections: 0, pron: [], weak: new Map(), mistakes: [] });
 const statusEl = $("#status");
 function setStatus(state, text) {
   statusEl.dataset.state = state;
@@ -705,6 +708,14 @@ async function aiTurn(userContent, displayText, pron = null) {
   if (me && pron) {
     renderPron(pron, me.wrap, { replaceText: me.bubble });
     savePronMistakes(pron);
+    if (pron.overall != null) call.stats.pron.push(pron.overall);
+    for (const raw of pron.words) {
+      const w = adjustForIcao(raw);
+      if (w.error === "Mispronunciation" || (w.error === "None" && w.score < 60)) {
+        const k = w.word.toLowerCase();
+        call.stats.weak.set(k, Math.min(call.stats.weak.get(k) ?? 100, w.score));
+      }
+    }
   }
   const userMsg = { role: "user", content: userContent };
   call.history.push(userMsg);
@@ -765,6 +776,14 @@ async function aiTurn(userContent, displayText, pron = null) {
   ai.wrap.append(replay);
   call.history.push({ role: "assistant", content: full });
   call.turns++;
+  if (me) {
+    call.stats.spoken++;
+    const n = (feedback?.corrections?.length || 0) + (feedback?.pronunciation?.length || 0);
+    call.stats.corrections += n;
+    if (!n) call.stats.clean++;
+    for (const c of feedback?.corrections || []) if (c.better) call.stats.mistakes.push(c.better);
+    for (const p of feedback?.pronunciation || []) if (p.word) call.stats.mistakes.push(p.word);
+  }
   if (feedback) {
     if (me) renderFeedback(feedback, me.wrap);
     else if (call.ending) renderFeedback(feedback, ai.wrap);
@@ -799,12 +818,16 @@ async function listen(manual) {
   call.listener?.cancel();
   let listener;
   try {
-    listener = makeListener({ manual, onInterim: setLive });
+    setStatus("thinking", "Abrindo o microfone…");
+    listener = makeListener({
+      manual,
+      onInterim: setLive,
+      onReady: () => { if (call.listener === listener) setStatus("listening", manual ? "Transmitindo…" : "Ouvindo… fale em inglês"); },
+    });
   } catch (e) {
     setStatus("error", e.message);
     return;
   }
-  setStatus("listening", manual ? "Transmitindo…" : "Ouvindo… fale em inglês");
   call.listener = listener;
   try {
     const r = await listener.result;
@@ -825,6 +848,7 @@ async function startCall() {
   call.history = [];
   call.icao = [];
   call.turns = 0;
+  call.stats = newStats();
   call.ending = false;
   call.pendingTyped = call.pendingTyped || null;
   call.startedAt = Date.now();
@@ -850,7 +874,12 @@ function finishCall() {
   if (call.turns > 1) {
     const avg = icaoAverages(call.icao);
     const s = serverConfig.scenarios.find((x) => x.id === scenario);
-    store.data.sessions.unshift({ date: Date.now(), scenario: s?.title || scenario, turns: call.turns, minutes: Math.round((Date.now() - call.startedAt) / 60000), icao: avg });
+    const st = call.stats;
+    const pronAvg = st.pron.length ? Math.round(st.pron.reduce((a, b) => a + b, 0) / st.pron.length) : null;
+    const minutes = Math.max(1, Math.round((Date.now() - call.startedAt) / 60000));
+    const prev = store.data.sessions.find((x) => x.scenarioId === scenario);
+    renderSummary({ title: s?.title || scenario, minutes, avg, pronAvg, st, prev });
+    store.data.sessions.unshift({ date: Date.now(), scenario: s?.title || scenario, scenarioId: scenario, turns: call.turns, spoken: st.spoken, clean: st.clean, pron: pronAvg, minutes, icao: avg });
     store.data.sessions = store.data.sessions.slice(0, 200);
     store.save();
   }
@@ -861,6 +890,54 @@ function finishCall() {
   setLive("");
   $("#interrupt-btn").hidden = true;
   updateCallButtons();
+}
+
+// Cartão de encerramento: o que foi bem, o que treinar e atalho para treinar.
+function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
+  const card = el("section", "summary");
+  card.append(el("h3", null, "Resumo da chamada"), el("p", "muted", `${title} · ${minutes} min · ${st.spoken} falas suas`));
+  const grid = el("div", "sum-grid");
+  const stat = (label, value, cls = "") => {
+    const d = el("div", "sum-stat " + cls);
+    d.append(el("b", null, value), el("span", null, label));
+    grid.append(d);
+  };
+  stat("Nível ICAO estimado", avg ? String(avg.overall) : "–", avg ? (avg.overall >= 4 ? "good" : "poor") : "");
+  stat("Falas sem correção", `${st.clean}/${st.spoken}`, st.spoken && st.clean / st.spoken >= 0.6 ? "good" : "fair");
+  if (pronAvg != null) {
+    const delta = prev?.pron != null ? pronAvg - prev.pron : null;
+    stat("Pronúncia média" + (delta != null ? ` (${delta >= 0 ? "+" : ""}${delta} vs. última)` : ""), String(pronAvg), scoreClass(pronAvg));
+  }
+  stat("Correções recebidas", String(st.corrections));
+  card.append(grid);
+  const weak = [...st.weak.entries()].sort((a, b) => a[1] - b[1]).slice(0, 5);
+  if (weak.length) {
+    card.append(el("h4", null, "Palavras para treinar"));
+    const row = el("div", "sum-words");
+    for (const [w, sc] of weak) {
+      const b = el("span", "chip-s " + scoreClass(sc), `${w} ${sc}`);
+      row.append(b, sayButton(w));
+    }
+    card.append(row);
+  }
+  const targets = [...new Set([...weak.map(([w]) => w), ...st.mistakes])];
+  if (targets.length) {
+    const go = el("button", "primary", `Treinar os ${targets.length} itens desta chamada`);
+    go.type = "button";
+    go.addEventListener("click", () => {
+      showTab("drill");
+      drill.reviewMode = true;
+      setDrill("mine", targets.map((t) => {
+        const m = store.data.mistakes.find((x) => x.target.toLowerCase() === t.toLowerCase());
+        return { say: m?.target || t, pt: m?.why || "", mistake: Boolean(m) };
+      }));
+    });
+    card.append(go);
+  } else {
+    card.append(el("p", "praise", "Nenhuma correção nesta chamada. Tente o nível acima!"));
+  }
+  $("#transcript").append(card);
+  scrollTranscript();
 }
 
 $("#call-btn").addEventListener("click", () => (call.active ? finishCall() : startCall()));
@@ -982,13 +1059,17 @@ $("#drill-rec").addEventListener("click", async () => {
   const item = drill.items[drill.index];
   const icao = drill.cat !== "sounds";
   try {
-    drill.listener = makeListener({ silenceMs: 1100, referenceText: item.say });
+    btn.textContent = "Abrindo o microfone…";
+    drill.listener = makeListener({
+      silenceMs: 1100,
+      referenceText: item.say,
+      onReady: () => { if (drill.listener) btn.textContent = "Pode falar… (toque para parar)"; },
+    });
   } catch (e) {
     $("#support-warning").hidden = false;
     return;
   }
   btn.classList.add("drill-rec-on");
-  btn.textContent = "Ouvindo… (toque para parar)";
   let r = null;
   try {
     r = await drill.listener.result;
@@ -1089,7 +1170,7 @@ function renderReview() {
   if (!store.data.sessions.length) sl.append(el("li", "muted", "Nenhuma chamada registrada."));
   for (const s of store.data.sessions) {
     const li = el("li");
-    li.append(el("b", null, `${s.scenario}`), el("span", "muted", `${fmtDate(s.date)} · ${s.turns} falas · ${s.minutes || 0} min`));
+    li.append(el("b", null, `${s.scenario}`), el("span", "muted", `${fmtDate(s.date)} · ${s.minutes || 0} min · ${s.spoken ?? s.turns} falas` + (s.spoken ? ` · ${s.clean} sem correção` : "") + (s.pron != null ? ` · pronúncia ${s.pron}` : "")));
     if (s.icao) li.append(el("span", "s-score", `ICAO ≈ ${s.icao.overall} · ` + CRITERIA.filter(([k]) => s.icao[k] != null).map(([k, l]) => `${l.slice(0, 4)} ${s.icao[k].toFixed(1)}`).join(" · ")));
     sl.append(li);
   }

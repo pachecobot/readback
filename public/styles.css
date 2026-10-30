@@ -272,3 +272,18 @@ button:disabled { opacity: 0.45; cursor: default; }
 .pd-tip b { font-family: var(--font-mono); color: var(--bad); margin-right: 4px; }
 .pd-note { color: var(--ink-2); }
 .drill-diff .pron { background: var(--surface); }
+
+/* Resumo do fim da chamada */
+.summary { border: 2px solid var(--ink); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: var(--surface); }
+.summary h3 { font-size: 1.5rem; }
+.summary h4 { margin: 4px 0 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-2); }
+.summary .muted { margin: 0; }
+.sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.sum-stat { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sum-stat b { font-family: var(--font-mono); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.sum-stat span { font-size: 0.8rem; color: var(--ink-2); }
+.sum-stat.good b { color: var(--good); }
+.sum-stat.fair b { color: var(--warn); }
+.sum-stat.poor b { color: var(--bad); }
+.sum-words { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.summary .primary { align-self: flex-start; }
