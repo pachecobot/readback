@@ -144,8 +144,6 @@ const VOICES = new Set([
 ]);
 for (const v of TEACHER_VOICES) VOICES.add(v);
 const PT_VOICE = TEACHER_VOICES[0];
-// Guarda a voz que funcionou para não pagar a espera das tentativas a cada frase.
-let teacherVoices = TEACHER_VOICES;
 const xmlEscape = (s) => s.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]);
 
 // Voz neural do Azure: devolve MP3 da frase.
@@ -157,7 +155,7 @@ async function handleTts(req, res) {
     if (!AZURE_KEY || !text) throw new Error(AZURE_KEY ? "Texto vazio." : "Azure não configurado.");
     const rate = Math.round((Math.min(1.5, Math.max(0.5, Number(body.rate) || 1)) - 1) * 100);
     // A Professora tenta a voz bilíngue e cai para as próximas se a região não tiver.
-    const voices = body.voice === PT_VOICE ? teacherVoices : [VOICES.has(body.voice) ? body.voice : "en-US-AvaNeural"];
+    const voices = TEACHER_VOICES.includes(body.voice) ? [body.voice, ...TEACHER_VOICES.filter((v) => v !== body.voice)] : [VOICES.has(body.voice) ? body.voice : "en-US-AvaNeural"];
     let r;
     for (const voice of voices) {
       const lang = voice.startsWith("pt-BR") ? "pt-BR" : "en-US";
@@ -172,10 +170,7 @@ async function handleTts(req, res) {
         },
         body: ssml,
       });
-      if (r.ok) {
-        if (body.voice === PT_VOICE && voice !== voices[0]) teacherVoices = [voice];
-        break;
-      }
+      if (r.ok) break;
     }
     if (!r.ok) throw new Error(`Azure TTS respondeu ${r.status}.`);
     res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "no-store" });
@@ -229,6 +224,7 @@ async function handleChat(req, res) {
               voiceCorrections: body.voiceCorrections !== false,
               callsign: body.callsign,
               progress: body.progress,
+              humorSeed: body.humorSeed,
             })
           : buildSystemPrompt({
               scenario: body.scenario,

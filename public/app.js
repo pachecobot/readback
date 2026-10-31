@@ -14,10 +14,13 @@ const DAY = 86400000;
 /* ---------- Armazenamento local ---------- */
 const STORE_KEY = "readback.v1";
 const store = (() => {
-  let data = { settings: {}, mistakes: [], sessions: [], best: {}, teacher: { items: {}, notes: [], lessons: 0 } };
+  let data = { settings: {}, mistakes: [], sessions: [], best: {}, teacher: { items: {}, notes: [], lessons: 0, history: [], seconds: 0 } };
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) data = { ...data, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      data = { ...data, ...saved, teacher: { ...data.teacher, ...saved.teacher } };
+    }
   } catch {}
   return {
     data,
@@ -109,7 +112,7 @@ async function fetchTts(text, rate) {
   const r = await fetch("api/tts", {
     method: "POST",
     headers: { "content-type": "application/json", "x-app-password": $("#password").value || "" },
-    body: JSON.stringify({ text, rate: rate ?? currentRate(), voice: teacherLive() ? serverConfig.teacherVoice : $("#voice").value }),
+    body: JSON.stringify({ text, rate: rate ?? currentRate(), voice: teacherLive() ? $("#bia-voice").value : $("#voice").value }),
   });
   if (!r.ok) throw new Error("tts");
   return URL.createObjectURL(await r.blob());
@@ -439,14 +442,15 @@ function renderScenarios() {
   const [label, freq] = STATIONS[scenario] || STATIONS.free;
   $("#station-label").textContent = label;
   $("#freq-value").textContent = freq;
-  $("#unit-field").hidden = scenario !== "teacher";
+  $("#unit-field").hidden = $("#bia-voice-field").hidden = scenario !== "teacher";
   renderUnits();
+  renderProgress();
 }
 
 /* ---------- Professora: programa e progresso ---------- */
-// Dominado = acertou duas vezes seguidas; erro volta para a revisão.
-const itemState = (id) => store.data.teacher.items[id] || { streak: 0, wrong: false };
-const isMastered = (id) => itemState(id).streak >= 2;
+// Repetição espaçada: acerto sobe de caixa e reaparece mais tarde; erro volta logo.
+const itemState = (id) => store.data.teacher.items[id] || { box: 0, due: 0, wrong: false };
+const isMastered = (id) => itemState(id).box >= 3;
 function nextUnit() {
   const units = serverConfig.units || [];
   return (units.find((u) => !u.itemIds.every(isMastered)) || units[0])?.id;
@@ -470,9 +474,11 @@ function teacherPayload() {
   const ids = Object.keys(t.items);
   return {
     unit: $("#unit").value === "auto" ? nextUnit() : $("#unit").value,
+    humorSeed: Math.floor(Math.random() * 1000),
     progress: {
       wrong: ids.filter((id) => t.items[id].wrong),
       mastered: ids.filter(isMastered),
+      due: ids.filter((id) => t.items[id].box > 0 && t.items[id].due <= Date.now()),
       notes: t.notes,
       lessons: t.lessons,
       weak: store.data.mistakes.filter((m) => m.kind === "pron").slice(0, 8).map((m) => m.target),
@@ -484,10 +490,70 @@ function recordAsked(asked) {
     if (!a?.id || !/^[a-z0-9]+$/i.test(a.id)) continue;
     const st = itemState(a.id);
     const ok = a.result === "correct";
-    store.data.teacher.items[a.id] = { streak: ok ? st.streak + 1 : 0, wrong: a.result === "wrong" || (st.wrong && !ok), date: Date.now() };
+    const box = ok ? Math.min((st.box || 0) + 1, INTERVALS.length - 1) : a.result === "wrong" ? 0 : st.box || 0;
+    store.data.teacher.items[a.id] = { box, due: Date.now() + (ok ? INTERVALS[box] * DAY : 0), wrong: a.result === "wrong" || (st.wrong && !ok), date: Date.now() };
     call.stats.asked.push({ id: a.id, ok });
   }
   store.save();
+  renderProgress();
+}
+// Etapas do curso. Só o tempo de prática usa referência externa (cerca de 100 horas até o A1, Cambridge).
+const STAGES = [[0, "Decolagem"], [15, "Subida inicial"], [40, "Rumo ao A1"], [70, "A1 do curso"], [100, "Rumo ao A2"]];
+const SESSION_GOAL = 20;
+function dayStreak() {
+  const days = new Set(store.data.teacher.history.map((h) => Math.floor(h.date / DAY)));
+  let d = Math.floor(Date.now() / DAY);
+  if (!days.has(d)) d--;
+  let n = 0;
+  while (days.has(d)) { n++; d--; }
+  return n;
+}
+function renderProgress() {
+  const box = $("#progress");
+  box.hidden = scenario !== "teacher";
+  if (box.hidden) return;
+  const units = serverConfig.units || [];
+  const allIds = units.flatMap((u) => u.itemIds);
+  const done = allIds.filter(isMastered).length;
+  const idx = STAGES.findLastIndex(([min]) => done >= min);
+  const [from, name] = STAGES[idx];
+  const to = STAGES[idx + 1]?.[0] ?? allIds.length;
+  const t = store.data.teacher;
+  const hours = (t.seconds || 0) / 3600;
+  const current = units.find((u) => u.id === (call.lesson?.unit || ($("#unit").value === "auto" ? nextUnit() : $("#unit").value)));
+  const session = call.active ? call.stats.asked.length : 0;
+  box.innerHTML = "";
+  const head = el("div", "prog-head");
+  head.append(el("b", null, `Nível ${idx + 1}: ${name}`), el("span", null, `${dayStreak()} dia(s) seguidos · ${done} frases dominadas`));
+  const bars = el("div", "prog-bars");
+  const bar = (label, value, max, text) => {
+    const d = el("div", "prog-bar");
+    const row = el("span");
+    row.append(label, el("b", null, text));
+    const track = el("i");
+    track.style.setProperty("--pct", Math.min(100, max ? (value / max) * 100 : 0) + "%");
+    d.append(row, track);
+    bars.append(d);
+  };
+  bar("Próximo nível", done - from, Math.max(1, to - from), `${done}/${to}`);
+  bar("Exercícios de hoje", session, SESSION_GOAL, `${session}/${SESSION_GOAL}`);
+  if (current) bar(current.title, current.itemIds.filter(isMastered).length, current.total, `${current.itemIds.filter(isMastered).length}/${current.total}`);
+  bar("Horas de prática até o A1", hours, 100, `${hours.toFixed(1)} h`);
+  box.append(head, bars);
+  const recent = t.history.filter((h) => h.total).slice(-10);
+  if (recent.length) {
+    const trend = el("div", "prog-trend");
+    trend.setAttribute("aria-label", "Acertos nas últimas aulas");
+    for (const h of recent) {
+      const col = el("u");
+      col.style.height = Math.max(8, (h.correct / h.total) * 100) + "%";
+      col.title = `${h.correct}/${h.total} acertos`;
+      trend.append(col);
+    }
+    box.append(trend, el("p", "prog-note", "Acertos nas últimas aulas. Os níveis são do curso, não um certificado."));
+  } else {
+    box.append(el("p", "prog-note", "Os níveis são do curso, não um certificado."));
+  }
 }
 function saveReport(report) {
   if (!report) return;
@@ -497,12 +563,20 @@ function saveReport(report) {
   t.lastGrade = report.grade;
   store.save();
 }
+function saveLesson() {
+  const t = store.data.teacher;
+  const asked = call.stats.asked;
+  t.seconds = (t.seconds || 0) + (Date.now() - call.startedAt) / 1000;
+  t.history = [...t.history, { date: Date.now(), total: asked.length, correct: asked.filter((a) => a.ok).length }].slice(-120);
+  store.save();
+}
 
 function saveSettings() {
   Object.assign(store.data.settings, {
     scenario,
     level: $("#level").value,
     unit: $("#unit").value,
+    biaVoice: $("#bia-voice").value,
     callsign: $("#callsign").value,
     ...(useAzure() ? { neuralVoice: $("#voice").value } : { voice: $("#voice").value }),
     rate: $("#rate").value,
@@ -516,6 +590,7 @@ function saveSettings() {
 (function restoreSettings() {
   const s = store.data.settings;
   if (s.level) $("#level").value = s.level;
+  if (s.biaVoice) $("#bia-voice").value = s.biaVoice;
   if (s.callsign) $("#callsign").value = s.callsign;
   if (s.rate) $("#rate").value = s.rate;
   if (s.voiceCorrections != null) $("#voice-corrections").checked = s.voiceCorrections;
@@ -523,7 +598,7 @@ function saveSettings() {
   if (s.showFeedback != null) $("#show-feedback").checked = s.showFeedback;
   $("#rate-out").textContent = Number($("#rate").value).toFixed(2) + "×";
 })();
-["#level", "#unit", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
+["#level", "#unit", "#bia-voice", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
   $(s).addEventListener("change", () => { saveSettings(); updateCallButtons(); }),
 );
 $("#rate").addEventListener("input", () => {
@@ -996,6 +1071,7 @@ async function startCall() {
   call.startedAt = Date.now();
   $("#transcript").innerHTML = "";
   renderIcao([]);
+  renderProgress();
   updateCallButtons();
   openMeter();
   try { call.wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
@@ -1015,6 +1091,7 @@ function finishCall() {
   stopAudioAndListening();
   closeMeter();
   closeSharedMic();
+  if (scenario === "teacher" && call.turns > 1) saveLesson();
   if (call.turns > 1) {
     const avg = icaoAverages(call.icao);
     const s = serverConfig.scenarios.find((x) => x.id === scenario);
@@ -1036,6 +1113,8 @@ function finishCall() {
   $("#interrupt-btn").hidden = true;
   $("#pt-btn").hidden = true;
   renderUnits();
+  call.lesson = null;
+  renderProgress();
   updateCallButtons();
 }
 
