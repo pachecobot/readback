@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt, SCENARIOS } from "./prompts.js";
+import { buildTeacherPrompt, TEACHER_VOICES, UNITS_PUBLIC } from "./teacher.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -141,6 +142,9 @@ const VOICES = new Set([
   "en-US-AvaNeural", "en-US-AndrewNeural", "en-US-EmmaNeural", "en-US-BrianNeural",
   "en-US-JennyNeural", "en-US-GuyNeural", "en-GB-SoniaNeural", "en-GB-RyanNeural", "en-AU-NatashaNeural",
 ]);
+const PT_VOICE = TEACHER_VOICES[0];
+// Guarda a voz que funcionou para não pagar a espera das tentativas a cada frase.
+let teacherVoices = TEACHER_VOICES;
 const xmlEscape = (s) => s.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]);
 
 // Voz neural do Azure: devolve MP3 da frase.
@@ -150,19 +154,28 @@ async function handleTts(req, res) {
     const body = await readJson(req, 16 * 1024);
     const text = String(body.text || "").slice(0, 1500).trim();
     if (!AZURE_KEY || !text) throw new Error(AZURE_KEY ? "Texto vazio." : "Azure não configurado.");
-    const voice = VOICES.has(body.voice) ? body.voice : "en-US-AvaNeural";
     const rate = Math.round((Math.min(1.5, Math.max(0.5, Number(body.rate) || 1)) - 1) * 100);
-    const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US"><voice name="${voice}"><prosody rate="${rate}%">${xmlEscape(text)}</prosody></voice></speak>`;
-    const r = await fetch(`https://${AZURE_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": AZURE_KEY,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
-        "User-Agent": "readback",
-      },
-      body: ssml,
-    });
+    // A Professora tenta a voz bilíngue e cai para as próximas se a região não tiver.
+    const voices = body.voice === PT_VOICE ? teacherVoices : [VOICES.has(body.voice) ? body.voice : "en-US-AvaNeural"];
+    let r;
+    for (const voice of voices) {
+      const lang = voice.startsWith("pt-BR") ? "pt-BR" : "en-US";
+      const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${rate}%">${xmlEscape(text)}</prosody></voice></speak>`;
+      r = await fetch(`https://${AZURE_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": AZURE_KEY,
+          "Content-Type": "application/ssml+xml",
+          "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+          "User-Agent": "readback",
+        },
+        body: ssml,
+      });
+      if (r.ok) {
+        if (body.voice === PT_VOICE && voice !== voices[0]) teacherVoices = [voice];
+        break;
+      }
+    }
     if (!r.ok) throw new Error(`Azure TTS respondeu ${r.status}.`);
     res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "no-store" });
     res.end(Buffer.from(await r.arrayBuffer()));
@@ -208,12 +221,20 @@ async function handleChat(req, res) {
         ...(FALLBACK_MODELS.has(MODEL) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {}),
         output_config: { effort: EFFORT },
         cache_control: { type: "ephemeral" },
-        system: buildSystemPrompt({
-          scenario: body.scenario,
-          level: body.level,
-          voiceCorrections: body.voiceCorrections !== false,
-          callsign: body.callsign,
-        }),
+        system: body.scenario === "teacher"
+          ? buildTeacherPrompt({
+              unit: body.unit,
+              level: body.level,
+              voiceCorrections: body.voiceCorrections !== false,
+              callsign: body.callsign,
+              progress: body.progress,
+            })
+          : buildSystemPrompt({
+              scenario: body.scenario,
+              level: body.level,
+              voiceCorrections: body.voiceCorrections !== false,
+              callsign: body.callsign,
+            }),
         messages,
       },
       { signal: controller.signal },
@@ -258,7 +279,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "GET" && pathname === "/api/config") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ model: MODEL, needsPassword: Boolean(APP_PASSWORD), azure: Boolean(AZURE_KEY), voices: [...VOICES], scenarios: SCENARIOS }));
+    res.end(JSON.stringify({ model: MODEL, needsPassword: Boolean(APP_PASSWORD), azure: Boolean(AZURE_KEY), voices: [...VOICES], scenarios: SCENARIOS, units: UNITS_PUBLIC, teacherVoice: PT_VOICE }));
     return;
   }
   if (req.method === "GET") return serveStatic(req, res);

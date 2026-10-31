@@ -19,6 +19,10 @@ Recursos da chamada:
 - **Encerrar com resumo**: a IA fala um resumo e lista os 3 pontos mais importantes para treinar.
 - Também dá para digitar, se o microfone não estiver disponível.
 
+## Professora Bia
+
+A Bia dá aula em português e inglês, com roteiro, banco de perguntas (`teacher.js`), correção logo após cada fala, pegadinhas, mini-prova e boletim. Ela entende as duas línguas: o microfone detecta o idioma e, quando ela pede uma resposta em inglês, liga a nota de pronúncia. O botão **Quero falar em português** troca o idioma nessa hora. O progresso e as lembranças da Bia ficam salvos no navegador.
+
 ## Nota de pronúncia por som (Azure Speech)
 
 Com o Azure configurado, cada fala sua é avaliada **no áudio, som por som**, como no ELSA:

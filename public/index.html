@@ -48,12 +48,16 @@
           <span class="label">Cenário</span>
           <div id="scenario-list" class="scenarios"></div>
         </div>
+        <label class="field" id="unit-field" hidden>
+          <span class="label">Aula de hoje</span>
+          <select id="unit"></select>
+        </label>
         <div class="field-row">
           <label class="field">
             <span class="label">Nível</span>
             <select id="level">
-              <option value="basic">Básico (ICAO 2–3)</option>
-              <option value="intermediate" selected>Intermediário (ICAO 3–4)</option>
+              <option value="basic" selected>Iniciante (não entendo inglês)</option>
+              <option value="intermediate">Intermediário (ICAO 3–4)</option>
               <option value="advanced">Avançado (ICAO 4–5)</option>
             </select>
           </label>
@@ -77,10 +81,6 @@
           <label class="toggle"><input type="checkbox" id="ptt"><span class="switch" aria-hidden="true"></span><span>Modo rádio: segurar para falar (PTT)</span></label>
           <label class="toggle"><input type="checkbox" id="show-feedback" checked><span class="switch" aria-hidden="true"></span><span>Mostrar correções na tela</span></label>
         </div>
-        <label class="field" id="password-field" hidden>
-          <span class="label">Senha do aplicativo</span>
-          <input id="password" type="password" autocomplete="current-password">
-        </label>
       </aside>
 
       <div class="call">
@@ -97,6 +97,10 @@
             <div class="status" id="status" data-state="idle">Pronto para chamar</div>
           </div>
           <div class="live" id="live" aria-live="polite"></div>
+          <label class="field" id="password-field" hidden>
+            <span class="label">Senha do aplicativo</span>
+            <input id="password" type="password" autocomplete="current-password">
+          </label>
           <div class="call-buttons">
             <button id="call-btn" class="call-btn" aria-label="Iniciar chamada">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg>
@@ -104,6 +108,7 @@
             </button>
             <button id="ptt-btn" class="ptt-btn" hidden>Segure para falar</button>
             <button id="interrupt-btn" class="ghost" hidden>Interromper e falar</button>
+            <button id="pt-btn" class="ghost" hidden>Quero falar em português</button>
           </div>
           <div class="icao" id="icao">
             <div class="icao-head"><span>Estimativa ICAO da chamada</span></div>
@@ -115,9 +120,9 @@
           <div class="empty" id="transcript-empty">
             <h3>Como funciona</h3>
             <ol>
-              <li>Escolha um cenário no plano de voo, por exemplo <b>Solo: táxi e Ground</b>.</li>
-              <li>Toque em <b>Chamar</b> e permita o microfone. A IA começa a cena.</li>
-              <li>Responda falando em inglês. Cada palavra ganha uma nota na hora.</li>
+              <li>Escolha <b>Professora Bia</b> para ter aula em português, ou um cenário de voo.</li>
+              <li>Toque em <b>Chamar</b> e permita o microfone. A IA começa a conversa.</li>
+              <li>Fale em português ou inglês com a Bia. Nas respostas em inglês, cada palavra ganha nota.</li>
               <li>A IA responde em voz e corrige você. Os erros vão para a <b>Revisão</b>.</li>
             </ol>
             <p class="hint">Use fone de ouvido para a IA não ouvir a própria voz.</p>

@@ -1,5 +1,5 @@
 import { DRILLS, PHONETIC, NUMBERS } from "./data.js";
-import { createAzureListener, preloadAzure, summarizeForAI, tipFor, adjustForIcao, scoreClass } from "./pron.js";
+import { createAzureListener, preloadAzure, openSharedMic, closeSharedMic, summarizeForAI, tipFor, adjustForIcao, scoreClass } from "./pron.js";
 import { createOrb, createMicMeter, burstAt, countUp } from "./fx.js";
 
 const $ = (s) => document.querySelector(s);
@@ -14,7 +14,7 @@ const DAY = 86400000;
 /* ---------- Armazenamento local ---------- */
 const STORE_KEY = "readback.v1";
 const store = (() => {
-  let data = { settings: {}, mistakes: [], sessions: [], best: {} };
+  let data = { settings: {}, mistakes: [], sessions: [], best: {}, teacher: { items: {}, notes: [], lessons: 0 } };
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) data = { ...data, ...JSON.parse(raw) };
@@ -49,6 +49,8 @@ const NEURAL_LABELS = {
   "en-AU-NatashaNeural": "Natasha (Austrália, feminina)",
 };
 const useAzure = () => Boolean(serverConfig.azure);
+// A Professora fala e escuta em dois idiomas só durante a própria chamada.
+const teacherLive = () => call.active && scenario === "teacher";
 function loadVoices() {
   const sel = $("#voice");
   if (useAzure()) {
@@ -84,9 +86,9 @@ const currentRate = () => Number($("#rate").value);
 
 function makeUtterance(text, rate) {
   const u = new SpeechSynthesisUtterance(text);
-  const v = currentVoice();
+  const v = teacherLive() ? synth.getVoices().find((x) => /^pt[-_]BR/i.test(x.lang)) : currentVoice();
   if (v) u.voice = v;
-  u.lang = v?.lang || "en-US";
+  u.lang = v?.lang || (teacherLive() ? "pt-BR" : "en-US");
   u.rate = rate ?? currentRate();
   return u;
 }
@@ -107,7 +109,7 @@ async function fetchTts(text, rate) {
   const r = await fetch("api/tts", {
     method: "POST",
     headers: { "content-type": "application/json", "x-app-password": $("#password").value || "" },
-    body: JSON.stringify({ text, rate: rate ?? currentRate(), voice: $("#voice").value }),
+    body: JSON.stringify({ text, rate: rate ?? currentRate(), voice: teacherLive() ? serverConfig.teacherVoice : $("#voice").value }),
   });
   if (!r.ok) throw new Error("tts");
   return URL.createObjectURL(await r.blob());
@@ -183,9 +185,9 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 // O aviso de navegador só aparece se não houver Azure (ver loadConfig).
 
 // Escuta o aluno. Modo automático: encerra após um silêncio. Modo manual (PTT): encerra com stop().
-function createListener({ onInterim, onReady, silenceMs = 1400, manual = false } = {}) {
+function createListener({ onInterim, onReady, silenceMs = 1400, manual = false, lang = "en" } = {}) {
   const rec = new SR();
-  rec.lang = "en-US";
+  rec.lang = lang === "en" ? "en-US" : "pt-BR";
   rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 3;
@@ -244,6 +246,7 @@ function createListener({ onInterim, onReady, silenceMs = 1400, manual = false }
         text: t,
         confidence: confs.length ? Math.min(...confs) : 0,
         alternatives: finals.length === 1 ? finals[0].alternatives : [],
+        detected: rec.lang,
       });
     } else {
       // O navegador encerrou sozinho (silêncio longo): continua ouvindo.
@@ -394,6 +397,7 @@ function splitReply(full) {
 
 /* ---------- Cenários e painel ---------- */
 const STATIONS = {
+  teacher: ["PROF. BIA", "AULA"],
   atc_ground: ["MARTE GND", "121.850"],
   atc_circuit: ["MARTE TWR", "118.700"],
   atc_xc: ["SAO PAULO APP", "119.800"],
@@ -403,7 +407,14 @@ const STATIONS = {
   travel_city: ["CIDADE", "HOTEL"],
   free: ["LIVRE", "CHAT"],
 };
-let scenario = store.data.settings.scenario || "atc_ground";
+// Quem já usava o app também começa na Professora, uma única vez.
+if (!store.data.settings.teacherIntro) {
+  store.data.settings.scenario = "teacher";
+  store.data.settings.level = "basic";
+  store.data.settings.teacherIntro = true;
+  store.save();
+}
+let scenario = store.data.settings.scenario || "teacher";
 function renderScenarios() {
   const list = $("#scenario-list");
   list.innerHTML = "";
@@ -428,12 +439,70 @@ function renderScenarios() {
   const [label, freq] = STATIONS[scenario] || STATIONS.free;
   $("#station-label").textContent = label;
   $("#freq-value").textContent = freq;
+  $("#unit-field").hidden = scenario !== "teacher";
+  renderUnits();
+}
+
+/* ---------- Professora: programa e progresso ---------- */
+// Dominado = acertou duas vezes seguidas; erro volta para a revisão.
+const itemState = (id) => store.data.teacher.items[id] || { streak: 0, wrong: false };
+const isMastered = (id) => itemState(id).streak >= 2;
+function nextUnit() {
+  const units = serverConfig.units || [];
+  return (units.find((u) => !u.itemIds.every(isMastered)) || units[0])?.id;
+}
+function renderUnits() {
+  const sel = $("#unit");
+  const saved = store.data.settings.unit || "auto";
+  sel.innerHTML = "";
+  const auto = el("option", null, "Automático: a Bia escolhe");
+  auto.value = "auto";
+  sel.append(auto);
+  (serverConfig.units || []).forEach((u, i) => {
+    const o = el("option", null, `${i + 1}. ${u.title} (${u.itemIds.filter(isMastered).length}/${u.total})`);
+    o.value = u.id;
+    sel.append(o);
+  });
+  sel.value = [...sel.options].some((o) => o.value === saved) ? saved : "auto";
+}
+function teacherPayload() {
+  const t = store.data.teacher;
+  const ids = Object.keys(t.items);
+  return {
+    unit: $("#unit").value === "auto" ? nextUnit() : $("#unit").value,
+    progress: {
+      wrong: ids.filter((id) => t.items[id].wrong),
+      mastered: ids.filter(isMastered),
+      notes: t.notes,
+      lessons: t.lessons,
+      weak: store.data.mistakes.filter((m) => m.kind === "pron").slice(0, 8).map((m) => m.target),
+    },
+  };
+}
+function recordAsked(asked) {
+  for (const a of Array.isArray(asked) ? asked : []) {
+    if (!a?.id || !/^[a-z0-9]+$/i.test(a.id)) continue;
+    const st = itemState(a.id);
+    const ok = a.result === "correct";
+    store.data.teacher.items[a.id] = { streak: ok ? st.streak + 1 : 0, wrong: a.result === "wrong" || (st.wrong && !ok), date: Date.now() };
+    call.stats.asked.push({ id: a.id, ok });
+  }
+  store.save();
+}
+function saveReport(report) {
+  if (!report) return;
+  const t = store.data.teacher;
+  t.notes = [...(Array.isArray(report.notes) ? report.notes : []).map((n) => String(n).slice(0, 140)), ...t.notes].slice(0, 8);
+  t.lessons++;
+  t.lastGrade = report.grade;
+  store.save();
 }
 
 function saveSettings() {
   Object.assign(store.data.settings, {
     scenario,
     level: $("#level").value,
+    unit: $("#unit").value,
     callsign: $("#callsign").value,
     ...(useAzure() ? { neuralVoice: $("#voice").value } : { voice: $("#voice").value }),
     rate: $("#rate").value,
@@ -454,7 +523,7 @@ function saveSettings() {
   if (s.showFeedback != null) $("#show-feedback").checked = s.showFeedback;
   $("#rate-out").textContent = Number($("#rate").value).toFixed(2) + "×";
 })();
-["#level", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
+["#level", "#unit", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
   $(s).addEventListener("change", () => { saveSettings(); updateCallButtons(); }),
 );
 $("#rate").addEventListener("input", () => {
@@ -529,7 +598,7 @@ function gradeMistake(target, ok) {
 
 /* ---------- Chamada ---------- */
 const call = { active: false, history: [], icao: [], speaker: null, listener: null, abort: null, ending: false, turns: 0, wakeLock: null, stats: null };
-const newStats = () => ({ spoken: 0, clean: 0, corrections: 0, pron: [], weak: new Map(), mistakes: [] });
+const newStats = () => ({ spoken: 0, clean: 0, corrections: 0, pron: [], weak: new Map(), mistakes: [], asked: [], report: null });
 const statusEl = $("#status");
 const orb = createOrb($("#orb"));
 // O medidor do microfone anima a esfera enquanto o aluno fala.
@@ -716,6 +785,7 @@ function studentContent(r) {
   if (r.alternatives?.length) meta.push("alternatives: " + r.alternatives.map((a) => `"${a}"`).join(" | "));
   if (meta.length) s += `\n[${meta.join("; ")}]`;
   if (r.pron) s += "\n" + summarizeForAI(r.pron);
+  if (scenario === "teacher" && r.detected) s += `\n[detected language: ${r.detected}]`;
   return s;
 }
 
@@ -751,6 +821,7 @@ async function aiTurn(userContent, displayText, pron = null) {
         level: $("#level").value,
         callsign: $("#callsign").value,
         voiceCorrections: $("#voice-corrections").checked,
+        ...(scenario === "teacher" ? call.lesson : {}),
         messages: call.history,
       },
       (text) => {
@@ -803,6 +874,14 @@ async function aiTurn(userContent, displayText, pron = null) {
   if (feedback) {
     if (me) renderFeedback(feedback, me.wrap);
     else if (call.ending) renderFeedback(feedback, ai.wrap);
+    if (scenario === "teacher") {
+      call.listenLang = feedback.listen === "en" ? "en" : "auto";
+      recordAsked(feedback.asked);
+      if (feedback.report) {
+        call.stats.report = feedback.report;
+        saveReport(feedback.report);
+      }
+    }
     const vals = feedback.icao || {};
     if (CRITERIA.some(([k]) => vals[k] > 0)) {
       call.icao.push(vals);
@@ -812,7 +891,8 @@ async function aiTurn(userContent, displayText, pron = null) {
   await speaker.done;
   $("#interrupt-btn").hidden = true;
   if (call.speaker === speaker) call.speaker = null;
-  if (call.ending) return finishCall();
+  // Só a fala do [END] fecha a chamada: a fala anterior, cancelada, ainda passa por aqui.
+  if (call.ending) return userContent === "[END]" ? finishCall() : undefined;
   if (call.pendingTyped) {
     const t = call.pendingTyped;
     call.pendingTyped = null;
@@ -833,12 +913,17 @@ function nextListen() {
 async function listen(manual) {
   call.listener?.cancel();
   let listener;
+  const teacher = scenario === "teacher";
+  const lang = teacher ? call.listenLang : "en";
+  const heard = lang !== "en" ? "Ouvindo… fale em português ou inglês" : teacher ? "Ouvindo… responda em inglês" : "Ouvindo… fale em inglês";
+  $("#pt-btn").hidden = !(teacher && lang === "en");
   try {
     setStatus("thinking", "Abrindo o microfone…");
     listener = makeListener({
       manual,
+      lang,
       onInterim: setLive,
-      onReady: () => { if (call.listener === listener) setStatus("listening", manual ? "Transmitindo…" : "Ouvindo… fale em inglês"); },
+      onReady: () => { if (call.listener === listener) setStatus("listening", manual ? "Transmitindo…" : heard); },
     });
   } catch (e) {
     setStatus("error", e.message);
@@ -848,19 +933,60 @@ async function listen(manual) {
   try {
     const r = await listener.result;
     if (call.listener === listener) call.listener = null;
+    $("#pt-btn").hidden = true;
     if (!r || !call.active) return;
     if (!r.text) return nextListen();
     setLive("");
     await aiTurn(studentContent(r), r.text, r.pron);
   } catch (e) {
     call.listener = null;
+    // A detecção de idioma pode falhar em alguns aparelhos: segue ouvindo em português.
+    if (teacher && lang === "auto" && !/microfone/i.test(e.message)) {
+      call.listenLang = "pt";
+      return listen(manual);
+    }
     setStatus("error", e.message);
   }
 }
 
+// Diz exatamente por que o microfone não abriu e o que fazer.
+function micHelp(e) {
+  const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent);
+  const open = IOS ? "Abra este endereço direto no Safari." : "Abra este endereço direto no Chrome.";
+  if (inApp) return `Este navegador dentro de outro app não libera o microfone. ${open}`;
+  if (e.name === "NoMediaDevices") return `Este navegador não dá acesso ao microfone. ${open}`;
+  if (e.name === "NotAllowedError") {
+    return IOS
+      ? "O iPhone bloqueou o microfone. Em Ajustes, abra Apps, depois Safari, e deixe Microfone em Perguntar ou Permitir. Depois recarregue a página."
+      : "O celular bloqueou o microfone. Toque no ícone ao lado do endereço, abra Permissões e ative o Microfone. Depois recarregue a página.";
+  }
+  if (e.name === "NotFoundError") return "Não encontrei nenhum microfone neste aparelho.";
+  if (e.name === "NotReadableError") return "Outro app está usando o microfone. Feche ligações e outros apps de áudio e tente de novo.";
+  return `Não consegui abrir o microfone (${e.name}: ${e.message}).`;
+}
+
 async function startCall() {
   saveSettings();
+  if (serverConfig.needsPassword && !$("#password").value) {
+    $("#transcript-empty")?.remove();
+    addBubble("ai", "Digite a senha do aplicativo logo acima do botão Chamar.").wrap.classList.add("error");
+    $("#password").focus();
+    return;
+  }
+  unlockAudio();
+  if (useAzure()) {
+    try {
+      await openSharedMic();
+    } catch (e) {
+      $("#transcript-empty")?.remove();
+      setStatus("error", "Microfone indisponível");
+      addBubble("ai", micHelp(e)).wrap.classList.add("error");
+      return;
+    }
+  }
   call.active = true;
+  call.lesson = scenario === "teacher" ? teacherPayload() : null;
+  call.listenLang = "auto";
   call.history = [];
   call.icao = [];
   call.turns = 0;
@@ -871,7 +997,6 @@ async function startCall() {
   $("#transcript").innerHTML = "";
   renderIcao([]);
   updateCallButtons();
-  unlockAudio();
   openMeter();
   try { call.wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
   await aiTurn("[START]", null);
@@ -889,6 +1014,7 @@ function stopAudioAndListening() {
 function finishCall() {
   stopAudioAndListening();
   closeMeter();
+  closeSharedMic();
   if (call.turns > 1) {
     const avg = icaoAverages(call.icao);
     const s = serverConfig.scenarios.find((x) => x.id === scenario);
@@ -896,7 +1022,8 @@ function finishCall() {
     const pronAvg = st.pron.length ? Math.round(st.pron.reduce((a, b) => a + b, 0) / st.pron.length) : null;
     const minutes = Math.max(1, Math.round((Date.now() - call.startedAt) / 60000));
     const prev = store.data.sessions.find((x) => x.scenarioId === scenario);
-    renderSummary({ title: s?.title || scenario, minutes, avg, pronAvg, st, prev });
+    const unit = (serverConfig.units || []).find((u) => u.id === call.lesson?.unit);
+    renderSummary({ title: unit ? `${s?.title}: ${unit.title}` : s?.title || scenario, minutes, avg, pronAvg, st, prev });
     store.data.sessions.unshift({ date: Date.now(), scenario: s?.title || scenario, scenarioId: scenario, turns: call.turns, spoken: st.spoken, clean: st.clean, pron: pronAvg, minutes, icao: avg });
     store.data.sessions = store.data.sessions.slice(0, 200);
     store.save();
@@ -907,19 +1034,23 @@ function finishCall() {
   setStatus("idle", "Chamada encerrada");
   setLive("");
   $("#interrupt-btn").hidden = true;
+  $("#pt-btn").hidden = true;
+  renderUnits();
   updateCallButtons();
 }
 
 // Cartão de encerramento: o que foi bem, o que treinar e atalho para treinar.
 function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
   const card = el("section", "summary");
-  card.append(el("h3", null, "Resumo da chamada"), el("p", "muted", `${title} · ${minutes} min · ${st.spoken} falas suas`));
+  card.append(el("h3", null, st.report ? "Boletim da aula" : "Resumo da chamada"), el("p", "muted", `${title} · ${minutes} min · ${st.spoken} falas suas`));
   const grid = el("div", "sum-grid");
   const stat = (label, value, cls = "") => {
     const d = el("div", "sum-stat " + cls);
     d.append(el("b", null, value), el("span", null, label));
     grid.append(d);
   };
+  if (st.report?.grade != null) stat("Nota da Bia", String(st.report.grade), st.report.grade >= 7 ? "good" : "fair");
+  if (st.asked.length) stat("Perguntas certas", `${st.asked.filter((a) => a.ok).length}/${st.asked.length}`, "fair");
   stat("Nível ICAO estimado", avg ? String(avg.overall) : "–", avg ? (avg.overall >= 4 ? "good" : "poor") : "");
   stat("Falas sem correção", `${st.clean}/${st.spoken}`, st.spoken && st.clean / st.spoken >= 0.6 ? "good" : "fair");
   if (pronAvg != null) {
@@ -928,6 +1059,8 @@ function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
   }
   stat("Correções recebidas", String(st.corrections));
   card.append(grid);
+  if (st.report?.summary) card.append(el("p", null, st.report.summary));
+  if (st.report?.next) card.append(el("h4", null, "Próxima aula"), el("p", null, st.report.next));
   const weak = [...st.weak.entries()].sort((a, b) => a[1] - b[1]).slice(0, 5);
   if (weak.length) {
     card.append(el("h4", null, "Palavras para treinar"));
@@ -964,6 +1097,11 @@ $("#call-btn").addEventListener("click", () => (call.active ? finishCall() : sta
 $("#interrupt-btn").addEventListener("click", () => {
   call.speaker?.cancel();
   stopAllAudio();
+});
+$("#pt-btn").addEventListener("click", () => {
+  if (!call.active) return;
+  call.listenLang = "auto";
+  listen(false);
 });
 $("#end-btn").addEventListener("click", () => {
   if (!call.active || call.ending) return;

@@ -2,6 +2,7 @@
 // o que permite reaproveitar o cache de prompt entre as falas.
 
 export const SCENARIOS = [
+  { id: "teacher", group: "Aula", title: "Professora Bia", desc: "Aula em português e inglês: roteiro, correção na hora, pegadinhas e boletim." },
   { id: "atc_ground", group: "Aviação", title: "Solo: táxi e Ground", desc: "Autorização de táxi, readback de pista, holding point." },
   { id: "atc_circuit", group: "Aviação", title: "Torre e circuito", desc: "Decolagem, perna do vento, toque e arremetida, pouso." },
   { id: "atc_xc", group: "Aviação", title: "Navegação (cross-country)", desc: "ATIS, saída, mudança de frequência, reporte de posição." },

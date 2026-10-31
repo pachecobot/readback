@@ -29,15 +29,72 @@ export function preloadAzure(password) {
   getToken(password).catch(() => {});
 }
 
+// Microfone único da chamada, aberto dentro do toque em Chamar. O iPhone só libera
+// áudio iniciado por um toque, e a IA fala antes de o aluno responder, então o SDK
+// abriria o microfone tarde demais. Assim ele também não reabre a cada fala.
+let mic = null;
+export async function openSharedMic() {
+  if (mic) return;
+  if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error("sem getUserMedia"), { name: "NoMediaDevices" });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  ctx.resume();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const source = ctx.createMediaStreamSource(stream);
+    const node = ctx.createScriptProcessor(4096, 1, 1);
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    source.connect(node);
+    node.connect(mute);
+    mute.connect(ctx.destination);
+    mic = { ctx, stream, node, push: null };
+    node.onaudioprocess = (ev) => {
+      if (mic?.push) mic.push.write(toPcm16k(ev.inputBuffer.getChannelData(0), ctx.sampleRate));
+    };
+  } catch (e) {
+    ctx.close().catch(() => {});
+    throw e;
+  }
+}
+export function closeSharedMic() {
+  if (!mic) return;
+  mic.stream.getTracks().forEach((t) => t.stop());
+  mic.ctx.close().catch(() => {});
+  mic = null;
+}
+// O Azure espera PCM de 16 kHz, 16 bits, mono.
+function toPcm16k(input, rate) {
+  const ratio = rate / 16000;
+  const out = new Int16Array(Math.floor(input.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const from = Math.floor(i * ratio), to = Math.max(from + 1, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = from; j < to; j++) sum += input[j];
+    out[i] = Math.max(-1, Math.min(1, sum / (to - from))) * 0x7fff;
+  }
+  return out.buffer;
+}
+function sharedMicAudio(sdk) {
+  const push = sdk.AudioInputStream.createPushStream(sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1));
+  mic.push = push;
+  return { audio: sdk.AudioConfig.fromStreamInput(push), detach() {
+    if (mic?.push === push) mic.push = null;
+    try { push.close(); } catch {}
+  } };
+}
+
 // Mesmo formato do ouvinte do navegador: { result, stop, cancel }.
 // referenceText vazio = fala livre (conversa); preenchido = frase-alvo (treino).
-export function createAzureListener({ referenceText = "", onInterim, onReady, manual = false, silenceMs = 1100, password = "" } = {}) {
+// lang "auto" detecta português ou inglês na fala, sem nota de pronúncia (o Azure só avalia com idioma fixo).
+export function createAzureListener({ referenceText = "", onInterim, onReady, manual = false, silenceMs = 800, password = "", lang = "en" } = {}) {
   let rec = null;
+  let detach = () => {};
   let finished = false;
   let stopRequested = false;
   let timer = null;
   const segments = [];
   let interim = "";
+  let detected = lang === "en" ? "en-US" : "";
   let resolve, reject;
   const result = new Promise((res, rej) => { resolve = res; reject = rej; });
 
@@ -48,13 +105,16 @@ export function createAzureListener({ referenceText = "", onInterim, onReady, ma
     clearTimeout(timer);
     const t = segments.map((s) => s.DisplayText || "").join(" ").replace(/\s+/g, " ").trim() || interim.trim();
     const conf = segments.map((s) => s.NBest?.[0]?.Confidence || 0).filter(Boolean);
-    resolve({ text: t, confidence: conf.length ? Math.min(...conf) : 0, alternatives: [], pron: mergeAssessment(segments, Boolean(referenceText)) });
+    const pron = lang === "en" ? mergeAssessment(segments, Boolean(referenceText)) : null;
+    resolve({ text: t, confidence: conf.length ? Math.min(...conf) : 0, alternatives: [], pron, detected });
+    detach();
     try { rec?.close(); } catch {}
   };
   const fail = (err) => {
     if (finished) return;
     finished = true;
     clearTimeout(timer);
+    detach();
     try { rec?.close(); } catch {}
     reject(err);
   };
@@ -76,20 +136,30 @@ export function createAzureListener({ referenceText = "", onInterim, onReady, ma
     const { token, region } = await getToken(password);
     if (finished) return;
     const cfg = sdk.SpeechConfig.fromAuthorizationToken(token, region);
-    cfg.speechRecognitionLanguage = "en-US";
     cfg.outputFormat = sdk.OutputFormat.Detailed;
-    const audio = sdk.AudioConfig.fromDefaultMicrophoneInput();
-    rec = new sdk.SpeechRecognizer(cfg, audio);
-    const pa = new sdk.PronunciationAssessmentConfig(
-      referenceText,
-      sdk.PronunciationAssessmentGradingSystem.HundredMark,
-      sdk.PronunciationAssessmentGranularity.Phoneme,
-      Boolean(referenceText),
-    );
-    pa.phonemeAlphabet = "IPA";
-    pa.nbestPhonemeCount = 5;
-    pa.enableProsodyAssessment = true;
-    pa.applyTo(rec);
+    let audio;
+    if (mic) ({ audio, detach } = sharedMicAudio(sdk));
+    else audio = sdk.AudioConfig.fromDefaultMicrophoneInput();
+    if (lang === "en") {
+      cfg.speechRecognitionLanguage = "en-US";
+      rec = new sdk.SpeechRecognizer(cfg, audio);
+      const pa = new sdk.PronunciationAssessmentConfig(
+        referenceText,
+        sdk.PronunciationAssessmentGradingSystem.HundredMark,
+        sdk.PronunciationAssessmentGranularity.Phoneme,
+        Boolean(referenceText),
+      );
+      pa.phonemeAlphabet = "IPA";
+      pa.nbestPhonemeCount = 5;
+      pa.enableProsodyAssessment = true;
+      pa.applyTo(rec);
+    } else if (lang === "pt") {
+      cfg.speechRecognitionLanguage = "pt-BR";
+      detected = "pt-BR";
+      rec = new sdk.SpeechRecognizer(cfg, audio);
+    } else {
+      rec = sdk.SpeechRecognizer.FromConfig(cfg, sdk.AutoDetectSourceLanguageConfig.fromLanguages(["pt-BR", "en-US"]), audio);
+    }
 
     rec.recognizing = (_, e) => {
       interim = e.result.text || "";
@@ -98,6 +168,7 @@ export function createAzureListener({ referenceText = "", onInterim, onReady, ma
     };
     rec.recognized = (_, e) => {
       if (e.result.reason !== sdk.ResultReason.RecognizedSpeech || !e.result.text) return;
+      if (lang === "auto") detected = sdk.AutoDetectSourceLanguageResult.fromResult(e.result).language || detected;
       try {
         segments.push(JSON.parse(e.result.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult)));
       } catch {
@@ -131,6 +202,7 @@ export function createAzureListener({ referenceText = "", onInterim, onReady, ma
       if (finished) return;
       finished = true;
       clearTimeout(timer);
+      detach();
       try { rec?.stopContinuousRecognitionAsync(() => rec.close(), () => rec.close()); } catch {}
       resolve(null);
     },
