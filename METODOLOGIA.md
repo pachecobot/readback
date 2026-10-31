@@ -23,6 +23,10 @@ Não existe prova de que um único método seja o melhor de todos: os estudos me
 | Humor | Fraca para aprendizado; ajuda o engajamento | Depende do professor | Tom variável, sem atrasar o exercício |
 | Shadowing | Incerta para pronúncia, promissora para escuta | Comum | Fica de fora por enquanto |
 
+## A escola
+
+O curso tem começo e fim: 17 capítulos e 34 aulas, em ordem. Cada aula dura 15 minutos, e a próxima só abre com nota 6 ou mais e pelo menos 8 minutos de aula. Cada capítulo fecha com uma missão.
+
 ## A aula
 
 Cerca de 15 minutos, trocando de atividade a cada 3 ou 4 falas:

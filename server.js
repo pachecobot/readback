@@ -220,6 +220,8 @@ async function handleChat(req, res) {
         system: body.scenario === "teacher"
           ? buildTeacherPrompt({
               unit: body.unit,
+              lesson: body.lesson,
+              studentName: body.studentName,
               level: body.level,
               voiceCorrections: body.voiceCorrections !== false,
               callsign: body.callsign,

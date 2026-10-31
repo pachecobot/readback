@@ -158,8 +158,18 @@ input[type="range"] { width: 100%; accent-color: var(--magenta); }
 button:disabled { opacity: 0.4; cursor: default; }
 
 /* Chamada */
-#password-field { margin: 0 0 10px; }
+#password-field, #name-field { margin: 0 0 10px; }
 .progress { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.course-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
+.course-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 9px 11px; border-radius: 10px; background: rgba(255,255,255,0.05); font-size: 0.85rem; }
+.course-row small { flex: none; color: var(--ink-2); }
+.course-row.now { outline: 1px solid var(--cyan); }
+.course-row.locked { opacity: 0.45; }
+.lesson-clock { display: flex; flex-direction: column; align-items: center; margin-left: auto; margin-right: 10px; font-size: 0.62rem; letter-spacing: 0.14em; color: var(--ink-2); }
+.lesson-clock b { font: 600 1.1rem var(--font-mono); color: var(--cyan); letter-spacing: 0; }
+.lesson-clock.low b { color: var(--magenta); }
+.scen-extra summary { cursor: pointer; font-size: 0.8rem; color: var(--ink-2); padding: 6px 0; }
+.prog-today { margin: 0; font-size: 0.86rem; }
 .prog-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .prog-head b { font: 700 1.05rem var(--font-display); color: var(--cyan); }
 .prog-head span { font-size: 0.8rem; color: var(--ink-2); }

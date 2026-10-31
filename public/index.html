@@ -48,10 +48,10 @@
           <span class="label">Cenário</span>
           <div id="scenario-list" class="scenarios"></div>
         </div>
-        <label class="field" id="unit-field" hidden>
-          <span class="label">Aula de hoje</span>
-          <select id="unit"></select>
-        </label>
+        <div class="field" id="unit-field" hidden>
+          <span class="label">Seu curso: do zero à formatura</span>
+          <div id="course-list" class="course-list"></div>
+        </div>
         <div class="field-row">
           <label class="field">
             <span class="label">Nível</span>
@@ -97,6 +97,7 @@
               <span class="freq-label" id="station-label">COM 1</span>
               <span class="freq-value" id="freq-value">118.700</span>
             </div>
+            <div class="lesson-clock" id="lesson-clock" hidden><span>TEMPO</span><b id="clock-value">15:00</b></div>
             <div class="icao-badge"><span>ICAO</span><b id="icao-overall">–</b></div>
           </div>
           <div class="orb-wrap">
@@ -104,6 +105,10 @@
             <div class="status" id="status" data-state="idle">Pronto para chamar</div>
           </div>
           <div class="live" id="live" aria-live="polite"></div>
+          <label class="field" id="name-field" hidden>
+            <span class="label">Como a Bia deve te chamar</span>
+            <input id="student-name" autocomplete="given-name" maxlength="40">
+          </label>
           <label class="field" id="password-field" hidden>
             <span class="label">Senha do aplicativo</span>
             <input id="password" type="password" autocomplete="current-password">

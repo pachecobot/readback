@@ -14,7 +14,7 @@ const DAY = 86400000;
 /* ---------- Armazenamento local ---------- */
 const STORE_KEY = "readback.v1";
 const store = (() => {
-  let data = { settings: {}, mistakes: [], sessions: [], best: {}, teacher: { items: {}, notes: [], lessons: 0, history: [], seconds: 0 } };
+  let data = { settings: {}, mistakes: [], sessions: [], best: {}, teacher: { items: {}, notes: [], lessons: 0, history: [], seconds: 0, visits: 0, course: { chapter: 0, lesson: 0 } } };
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
@@ -346,7 +346,9 @@ async function loadConfig() {
     $("#password-field").hidden = false;
     $("#password").value = store.data.settings.password || "";
   }
+  logVisit();
   renderScenarios();
+  updateCallButtons();
 }
 
 async function streamChat(payload, onText, signal) {
@@ -421,28 +423,35 @@ let scenario = store.data.settings.scenario || "teacher";
 function renderScenarios() {
   const list = $("#scenario-list");
   list.innerHTML = "";
+  const extra = el("details", "scen-extra");
+  extra.append(el("summary", null, "Simuladores extras, fora do curso"));
+  extra.open = scenario !== "teacher";
   let group = "";
   for (const s of serverConfig.scenarios) {
-    if (s.group !== group) {
+    const into = s.id === "teacher" ? list : extra;
+    if (s.id !== "teacher" && s.group !== group) {
       group = s.group;
-      list.append(el("div", "scen-group", group));
+      extra.append(el("div", "scen-group", group));
     }
     const b = el("button", "scen");
     b.type = "button";
     b.setAttribute("aria-pressed", String(s.id === scenario));
-    b.append(el("b", null, s.title), el("span", null, s.desc));
+    b.append(el("b", null, s.id === "teacher" ? "Curso com a Professora Bia" : s.title), el("span", null, s.desc));
     b.addEventListener("click", () => {
       if (call.active) return;
       scenario = s.id;
       saveSettings();
       renderScenarios();
+      updateCallButtons();
     });
-    list.append(b);
+    into.append(b);
   }
+  list.append(extra);
   const [label, freq] = STATIONS[scenario] || STATIONS.free;
   $("#station-label").textContent = label;
   $("#freq-value").textContent = freq;
   $("#unit-field").hidden = $("#bia-voice-field").hidden = scenario !== "teacher";
+  $("#name-field").hidden = scenario !== "teacher" || Boolean(store.data.settings.studentName);
   renderUnits();
   renderProgress();
 }
@@ -451,29 +460,71 @@ function renderScenarios() {
 // Repetição espaçada: acerto sobe de caixa e reaparece mais tarde; erro volta logo.
 const itemState = (id) => store.data.teacher.items[id] || { box: 0, due: 0, wrong: false };
 const isMastered = (id) => itemState(id).box >= 3;
-function nextUnit() {
-  const units = serverConfig.units || [];
-  return (units.find((u) => !u.itemIds.every(isMastered)) || units[0])?.id;
-}
+// Curso em linha reta: um capítulo libera o próximo, e a aula só avança se for aprovada.
+const courseUnits = () => serverConfig.units || [];
+const coursePos = () => store.data.teacher.course;
+const courseDone = () => coursePos().chapter >= courseUnits().length;
+const currentUnit = () => courseUnits()[Math.min(coursePos().chapter, courseUnits().length - 1)];
 function renderUnits() {
-  const sel = $("#unit");
-  const saved = store.data.settings.unit || "auto";
-  sel.innerHTML = "";
-  const auto = el("option", null, "Automático: a Bia escolhe");
-  auto.value = "auto";
-  sel.append(auto);
-  (serverConfig.units || []).forEach((u, i) => {
-    const o = el("option", null, `${i + 1}. ${u.title} (${u.itemIds.filter(isMastered).length}/${u.total})`);
-    o.value = u.id;
-    sel.append(o);
+  const list = $("#course-list");
+  list.innerHTML = "";
+  const pos = coursePos();
+  courseUnits().forEach((u, i) => {
+    const state = i < pos.chapter ? "done" : i === pos.chapter ? "now" : "locked";
+    const row = el("div", "course-row " + state);
+    row.append(el("span", null, `${i + 1}. ${u.title}`), el("small", null, state === "done" ? "Concluído" : state === "now" ? `Aula ${pos.lesson + 1}/${u.lessons}` : "Bloqueado"));
+    list.append(row);
   });
-  sel.value = [...sel.options].some((o) => o.value === saved) ? saved : "auto";
+  list.querySelector(".now")?.scrollIntoView?.({ block: "nearest" });
+}
+function advanceCourse() {
+  const pos = coursePos();
+  const u = currentUnit();
+  if (pos.lesson + 1 < u.lessons) pos.lesson++;
+  else { pos.chapter++; pos.lesson = 0; }
+  store.save();
+}
+/* ---------- Acessos e presença ---------- */
+function logVisit() {
+  const t = store.data.teacher;
+  const now = Date.now();
+  if (now - (t.lastVisit || 0) > 30 * 60000) {
+    t.prevVisit = t.lastVisit || 0;
+    t.visits = (t.visits || 0) + 1;
+  }
+  t.lastVisit = now;
+  store.save();
+}
+const greeting = () => {
+  const h = new Date().getHours();
+  return h >= 5 && h < 12 ? "bom dia" : h >= 12 && h < 18 ? "boa tarde" : "boa noite";
+};
+const dayOf = (ms) => new Date(ms).toDateString();
+const passedLessons = () => store.data.teacher.history.filter((h) => h.passed);
+function daysAbsent() {
+  const last = passedLessons().at(-1) || store.data.teacher.history.at(-1);
+  return last ? Math.floor((Date.now() - last.date) / DAY) : null;
+}
+function todayStatus() {
+  const today = store.data.teacher.history.filter((h) => dayOf(h.date) === dayOf(Date.now()));
+  if (today.some((h) => h.passed)) return "Aula de hoje concluída";
+  return today.length ? "Aula de hoje não concluída" : "Aula de hoje não iniciada";
+}
+function startLine() {
+  const t = store.data.teacher;
+  const u = currentUnit();
+  const absent = daysAbsent();
+  const last = t.history.at(-1);
+  const pending = last && !last.passed ? "ATENÇÃO: ele não terminou a aula anterior, que será repetida hoje. " : "";
+  return `[START]\n[Saudação agora: ${greeting()}. Acesso número ${t.visits}. ${absent == null ? "É a primeira aula dele." : absent === 0 ? "Ele já teve aula hoje." : `Última aula há ${absent} dia(s).`} ${pending}Hoje: capítulo ${coursePos().chapter + 1}, ${u.title}, aula ${coursePos().lesson + 1} de ${u.lessons}. ${todayStatus()}.]`;
 }
 function teacherPayload() {
   const t = store.data.teacher;
   const ids = Object.keys(t.items);
   return {
-    unit: $("#unit").value === "auto" ? nextUnit() : $("#unit").value,
+    unit: currentUnit()?.id,
+    lesson: coursePos().lesson,
+    studentName: $("#student-name").value.trim(),
     humorSeed: Math.floor(Math.random() * 1000),
     progress: {
       wrong: ids.filter((id) => t.items[id].wrong),
@@ -520,11 +571,17 @@ function renderProgress() {
   const to = STAGES[idx + 1]?.[0] ?? allIds.length;
   const t = store.data.teacher;
   const hours = (t.seconds || 0) / 3600;
-  const current = units.find((u) => u.id === (call.lesson?.unit || ($("#unit").value === "auto" ? nextUnit() : $("#unit").value)));
+  const current = currentUnit();
+  const lessonsTotal = units.reduce((n, u) => n + u.lessons, 0);
+  const lessonsDone = units.slice(0, coursePos().chapter).reduce((n, u) => n + u.lessons, 0) + coursePos().lesson;
   const session = call.active ? call.stats.asked.length : 0;
   box.innerHTML = "";
   const head = el("div", "prog-head");
-  head.append(el("b", null, `Nível ${idx + 1}: ${name}`), el("span", null, `${dayStreak()} dia(s) seguidos · ${done} frases dominadas`));
+  const hello = greeting();
+  const who = $("#student-name").value.trim();
+  head.append(el("b", null, `${hello[0].toUpperCase()}${hello.slice(1)}${who ? `, ${who}` : ""}`), el("span", null, `Acesso ${t.visits || 1} · ${dayStreak()} dia(s) seguidos`));
+  const absent = daysAbsent();
+  const today = el("p", "prog-today", courseDone() ? "Curso concluído. Parabéns, comandante." : `${todayStatus()}${absent ? ` · ${absent} dia(s) sem aula` : ""}. Próxima: capítulo ${coursePos().chapter + 1}, aula ${coursePos().lesson + 1}. Missão: ${current?.mission || ""}`);
   const bars = el("div", "prog-bars");
   const bar = (label, value, max, text) => {
     const d = el("div", "prog-bar");
@@ -535,11 +592,12 @@ function renderProgress() {
     d.append(row, track);
     bars.append(d);
   };
-  bar("Próximo nível", done - from, Math.max(1, to - from), `${done}/${to}`);
+  bar("Curso até a formatura", lessonsDone, lessonsTotal, `${lessonsDone}/${lessonsTotal} aulas`);
+  bar(`Nível ${idx + 1}: ${name}`, done - from, Math.max(1, to - from), `${done}/${to} frases`);
   bar("Exercícios de hoje", session, SESSION_GOAL, `${session}/${SESSION_GOAL}`);
-  if (current) bar(current.title, current.itemIds.filter(isMastered).length, current.total, `${current.itemIds.filter(isMastered).length}/${current.total}`);
+  if (current) bar(`Capítulo ${coursePos().chapter + 1}`, coursePos().lesson, current.lessons, `${coursePos().lesson}/${current.lessons} aulas`);
   bar("Horas de prática até o A1", hours, 100, `${hours.toFixed(1)} h`);
-  box.append(head, bars);
+  box.append(head, today, bars);
   const recent = t.history.filter((h) => h.total).slice(-10);
   if (recent.length) {
     const trend = el("div", "prog-trend");
@@ -563,19 +621,25 @@ function saveReport(report) {
   t.lastGrade = report.grade;
   store.save();
 }
+const MIN_LESSON_SEC = 8 * 60;
 function saveLesson() {
   const t = store.data.teacher;
   const asked = call.stats.asked;
-  t.seconds = (t.seconds || 0) + (Date.now() - call.startedAt) / 1000;
-  t.history = [...t.history, { date: Date.now(), total: asked.length, correct: asked.filter((a) => a.ok).length }].slice(-120);
+  const seconds = (Date.now() - call.startedAt) / 1000;
+  const grade = Number(call.stats.report?.grade);
+  const passed = grade >= 6 && seconds >= MIN_LESSON_SEC;
+  t.seconds = (t.seconds || 0) + seconds;
+  t.history = [...t.history, { date: Date.now(), total: asked.length, correct: asked.filter((a) => a.ok).length, passed, seconds: Math.round(seconds) }].slice(-200);
+  if (passed && !courseDone()) advanceCourse();
   store.save();
+  return { passed, tooShort: seconds < MIN_LESSON_SEC };
 }
 
 function saveSettings() {
   Object.assign(store.data.settings, {
     scenario,
     level: $("#level").value,
-    unit: $("#unit").value,
+    studentName: $("#student-name").value,
     biaVoice: $("#bia-voice").value,
     callsign: $("#callsign").value,
     ...(useAzure() ? { neuralVoice: $("#voice").value } : { voice: $("#voice").value }),
@@ -591,6 +655,7 @@ function saveSettings() {
   const s = store.data.settings;
   if (s.level) $("#level").value = s.level;
   if (s.biaVoice) $("#bia-voice").value = s.biaVoice;
+  if (s.studentName) $("#student-name").value = s.studentName;
   if (s.callsign) $("#callsign").value = s.callsign;
   if (s.rate) $("#rate").value = s.rate;
   if (s.voiceCorrections != null) $("#voice-corrections").checked = s.voiceCorrections;
@@ -598,7 +663,7 @@ function saveSettings() {
   if (s.showFeedback != null) $("#show-feedback").checked = s.showFeedback;
   $("#rate-out").textContent = Number($("#rate").value).toFixed(2) + "×";
 })();
-["#level", "#unit", "#bia-voice", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
+["#level", "#student-name", "#bia-voice", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
   $(s).addEventListener("change", () => { saveSettings(); updateCallButtons(); }),
 );
 $("#rate").addEventListener("input", () => {
@@ -698,8 +763,10 @@ function setLive(text) { $("#live").textContent = text || ""; }
 function updateCallButtons() {
   const ptt = $("#ptt").checked;
   $("#call-btn").classList.toggle("active", call.active);
-  $("#call-btn-text").textContent = call.active ? "Desligar" : "Chamar";
-  $("#call-btn").setAttribute("aria-label", call.active ? "Desligar chamada" : "Iniciar chamada");
+  const aula = scenario === "teacher";
+  $("#call-btn-text").textContent = call.active ? (aula ? "Encerrar aula" : "Desligar") : aula ? "Iniciar aula" : "Chamar";
+  $("#call-btn").setAttribute("aria-label", call.active ? "Encerrar" : "Iniciar");
+  $("#end-btn").hidden = aula;
   $("#ptt-btn").hidden = !(call.active && ptt);
   $("#end-btn").disabled = !call.active;
   document.querySelectorAll(".scen").forEach((b) => (b.disabled = call.active));
@@ -865,6 +932,10 @@ function studentContent(r) {
 }
 
 async function aiTurn(userContent, displayText, pron = null) {
+  if (call.timeNote && userContent !== "[END]") {
+    userContent += call.timeNote;
+    call.timeNote = "";
+  }
   const me = displayText ? addBubble("me", displayText) : null;
   if (me && pron) {
     renderPron(pron, me.wrap, { replaceText: me.bubble });
@@ -1062,6 +1133,8 @@ async function startCall() {
   call.active = true;
   call.lesson = scenario === "teacher" ? teacherPayload() : null;
   call.listenLang = "auto";
+  call.timeNote = "";
+  call.warned = false;
   call.history = [];
   call.icao = [];
   call.turns = 0;
@@ -1075,7 +1148,33 @@ async function startCall() {
   updateCallButtons();
   openMeter();
   try { call.wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
-  await aiTurn("[START]", null);
+  if (scenario === "teacher") startClock();
+  await aiTurn(scenario === "teacher" ? startLine() : "[START]", null);
+}
+
+const LESSON_SEC = 15 * 60;
+function startClock() {
+  clearInterval(call.timer);
+  $("#lesson-clock").hidden = false;
+  const tick = () => {
+    const left = Math.max(0, LESSON_SEC - (Date.now() - call.startedAt) / 1000);
+    $("#clock-value").textContent = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(Math.floor(left % 60)).padStart(2, "0")}`;
+    $("#lesson-clock").classList.toggle("low", left <= 180);
+    if (left <= 180 && !call.warned) {
+      call.warned = true;
+      call.timeNote = "\n[TIME: 3 minutes left. Go to the MISSION now.]";
+    }
+    if (left <= 0) endLesson();
+  };
+  tick();
+  call.timer = setInterval(tick, 1000);
+}
+function endLesson() {
+  if (!call.active || call.ending) return;
+  call.ending = true;
+  clearInterval(call.timer);
+  stopAudioAndListening();
+  aiTurn("[END]", null);
 }
 
 function stopAudioAndListening() {
@@ -1091,7 +1190,9 @@ function finishCall() {
   stopAudioAndListening();
   closeMeter();
   closeSharedMic();
-  if (scenario === "teacher" && call.turns > 1) saveLesson();
+  clearInterval(call.timer);
+  $("#lesson-clock").hidden = true;
+  const result = scenario === "teacher" && call.turns > 1 ? saveLesson() : null;
   if (call.turns > 1) {
     const avg = icaoAverages(call.icao);
     const s = serverConfig.scenarios.find((x) => x.id === scenario);
@@ -1100,7 +1201,7 @@ function finishCall() {
     const minutes = Math.max(1, Math.round((Date.now() - call.startedAt) / 60000));
     const prev = store.data.sessions.find((x) => x.scenarioId === scenario);
     const unit = (serverConfig.units || []).find((u) => u.id === call.lesson?.unit);
-    renderSummary({ title: unit ? `${s?.title}: ${unit.title}` : s?.title || scenario, minutes, avg, pronAvg, st, prev });
+    renderSummary({ title: unit ? `Capítulo ${courseUnits().indexOf(unit) + 1}: ${unit.title}` : s?.title || scenario, minutes, avg, pronAvg, st, prev, result });
     store.data.sessions.unshift({ date: Date.now(), scenario: s?.title || scenario, scenarioId: scenario, turns: call.turns, spoken: st.spoken, clean: st.clean, pron: pronAvg, minutes, icao: avg });
     store.data.sessions = store.data.sessions.slice(0, 200);
     store.save();
@@ -1119,7 +1220,7 @@ function finishCall() {
 }
 
 // Cartão de encerramento: o que foi bem, o que treinar e atalho para treinar.
-function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
+function renderSummary({ title, minutes, avg, pronAvg, st, prev, result }) {
   const card = el("section", "summary");
   card.append(el("h3", null, st.report ? "Boletim da aula" : "Resumo da chamada"), el("p", "muted", `${title} · ${minutes} min · ${st.spoken} falas suas`));
   const grid = el("div", "sum-grid");
@@ -1138,6 +1239,7 @@ function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
   }
   stat("Correções recebidas", String(st.corrections));
   card.append(grid);
+  if (result) card.append(el("p", "praise", result.passed ? "Aula concluída. A próxima foi liberada." : result.tooShort ? "Aula não concluída: faltou tempo. Ela continua na próxima vez." : "Aula não concluída: a nota mínima é 6. Vamos refazer."));
   if (st.report?.summary) card.append(el("p", null, st.report.summary));
   if (st.report?.next) card.append(el("h4", null, "Próxima aula"), el("p", null, st.report.next));
   const weak = [...st.weak.entries()].sort((a, b) => a[1] - b[1]).slice(0, 5);
@@ -1151,7 +1253,9 @@ function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
     card.append(row);
   }
   const targets = [...new Set([...weak.map(([w]) => w), ...st.mistakes])];
-  if (targets.length) {
+  if (result) {
+    // Dentro do curso, o próximo passo é a aula seguinte, não um treino solto.
+  } else if (targets.length) {
     const go = el("button", "primary", `Treinar os ${targets.length} itens desta chamada`);
     go.type = "button";
     go.addEventListener("click", () => {
@@ -1166,13 +1270,28 @@ function renderSummary({ title, minutes, avg, pronAvg, st, prev }) {
   } else {
     card.append(el("p", "praise", "Nenhuma correção nesta chamada. Tente o nível acima!"));
   }
+  if (result) {
+    const again = el("button", "primary", result.passed ? "Fazer mais uma aula" : "Refazer a aula");
+    again.type = "button";
+    again.addEventListener("click", startCall);
+    const leave = el("button", "ghost", "Por hoje é só");
+    leave.type = "button";
+    leave.addEventListener("click", () => { card.remove(); });
+    const row = el("div", "sum-words");
+    row.append(again, leave);
+    card.append(row);
+  }
   $("#transcript").append(card);
   scrollTranscript();
   card.querySelectorAll(".sum-stat b").forEach((b) => { if (/^\d+$/.test(b.textContent)) countUp(b, Number(b.textContent)); });
   if ((avg && avg.overall >= 4) || (st.spoken && st.clean / st.spoken >= 0.7)) setTimeout(() => burstAt(card.querySelector(".sum-stat")), 250);
 }
 
-$("#call-btn").addEventListener("click", () => (call.active ? finishCall() : startCall()));
+$("#call-btn").addEventListener("click", () => {
+  if (!call.active) return startCall();
+  if (scenario === "teacher" && call.turns > 0) endLesson();
+  else finishCall();
+});
 $("#interrupt-btn").addEventListener("click", () => {
   call.speaker?.cancel();
   stopAllAudio();
@@ -1182,12 +1301,7 @@ $("#pt-btn").addEventListener("click", () => {
   call.listenLang = "auto";
   listen(false);
 });
-$("#end-btn").addEventListener("click", () => {
-  if (!call.active || call.ending) return;
-  call.ending = true;
-  stopAudioAndListening();
-  aiTurn("[END]", null);
-});
+$("#end-btn").addEventListener("click", endLesson);
 $("#type-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = $("#type-input").value.trim();
