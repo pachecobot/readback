@@ -5,9 +5,103 @@
 export const TEACHER_VOICES = ["pt-BR-Thalita:DragonHDLatestNeural", "pt-BR-ThalitaMultilingualNeural", "en-US-AvaMultilingualNeural", "pt-BR-FranciscaNeural"];
 
 // tipo: pergunta, traducao, readback, repita ou pegadinha.
-export const UNITS = [
+const f = (id, q, a, why) => ({ id, kind: "frase", q, a, why });
+
+// Curso de inglês do zero. As unidades de aviação vêm depois da base.
+const BASE_UNITS = [
   {
-    id: "u1", title: "Alfabeto e números no rádio", goal: "Soletrar o prefixo e falar números do jeito ICAO.",
+    id: "e1", title: "Primeiras frases", goal: "Cumprimentar e dizer quem você é.",
+    items: [
+      f("e1a", "Oi.", "Hi", "Hi é o oi do dia a dia."),
+      f("e1b", "Meu nome é Pedro.", "My name is Pedro", "My name is significa meu nome é."),
+      f("e1c", "Prazer em te conhecer.", "Nice to meet you", "Frase pronta: decore inteira."),
+      f("e1d", "Como você está?", "How are you?", "How significa como."),
+      f("e1e", "Eu estou bem, obrigado.", "I'm fine, thank you", "I'm é a forma curta de I am."),
+      f("e1f", "Eu sou brasileiro.", "I'm Brazilian", "Nacionalidade em inglês começa com letra maiúscula."),
+      f("e1g", "Eu sou aluno piloto.", "I'm a student pilot", "Profissão pede o a: I'm a pilot."),
+      f("e1h", "Tchau, até logo.", "Bye, see you later", "See you later significa até logo."),
+    ],
+  },
+  {
+    id: "e2", title: "Verbo ser e estar", goal: "Usar I am, you are, he is e she is.",
+    items: [
+      f("e2a", "Eu estou cansado.", "I'm tired", "Am serve para ser e para estar."),
+      f("e2b", "Você é meu amigo.", "You are my friend", "You usa are."),
+      f("e2c", "Ele é piloto.", "He is a pilot", "He é ele e usa is."),
+      f("e2d", "Ela é professora.", "She is a teacher", "She é ela e usa is."),
+      f("e2e", "Nós estamos aqui.", "We are here", "We é nós e usa are."),
+      f("e2f", "Eu não estou cansado.", "I'm not tired", "O not vem depois do verbo."),
+      f("e2g", "Você está bem?", "Are you OK?", "Na pergunta, o are vem antes do you."),
+      f("e2h", "Está chovendo.", "It's raining", "Inglês exige o sujeito: it."),
+    ],
+  },
+  {
+    id: "e3", title: "Perguntas essenciais", goal: "Perguntar nome, lugar, hora e preço.",
+    items: [
+      f("e3a", "Qual é o seu nome?", "What's your name?", "What significa o que ou qual."),
+      f("e3b", "De onde você é?", "Where are you from?", "Where significa onde."),
+      f("e3c", "Onde fica o banheiro?", "Where is the bathroom?", "Where is significa onde fica."),
+      f("e3d", "Quanto custa?", "How much is it?", "How much pergunta o preço."),
+      f("e3e", "Que horas são?", "What time is it?", "Frase pronta para perguntar as horas."),
+      f("e3f", "Por que?", "Why?", "Why pergunta o motivo."),
+      f("e3g", "Você fala português?", "Do you speak Portuguese?", "Do abre perguntas com outros verbos."),
+      f("e3h", "Pode repetir, por favor?", "Can you repeat that, please?", "A frase mais útil para quem está aprendendo."),
+    ],
+  },
+  {
+    id: "e4", title: "Quero, preciso e tenho", goal: "Pedir o que você precisa.",
+    items: [
+      f("e4a", "Eu quero água.", "I want water", "Want significa querer."),
+      f("e4b", "Eu gostaria de um café.", "I'd like a coffee", "I'd like é o jeito educado de pedir."),
+      f("e4c", "Eu preciso de ajuda.", "I need help", "Need significa precisar."),
+      f("e4d", "Eu tenho uma pergunta.", "I have a question", "Have significa ter."),
+      f("e4e", "Eu tenho vinte e cinco anos.", "I'm twenty-five years old", "Idade usa am, não have."),
+      f("e4f", "Eu não tenho dinheiro.", "I don't have money", "Don't nega os outros verbos."),
+      f("e4g", "Posso pagar com cartão?", "Can I pay by card?", "Can I pede permissão."),
+      f("e4h", "Eu não entendo.", "I don't understand", "Understand significa entender."),
+    ],
+  },
+  {
+    id: "e5", title: "Minha rotina", goal: "Falar do que você faz no dia a dia.",
+    items: [
+      f("e5a", "Eu trabalho todo dia.", "I work every day", "Every day significa todo dia."),
+      f("e5b", "Eu estudo inglês.", "I study English", "Idiomas têm letra maiúscula."),
+      f("e5c", "Eu moro no Brasil.", "I live in Brazil", "Live in significa morar em."),
+      f("e5d", "Eu gosto de voar.", "I like to fly", "Like to significa gostar de."),
+      f("e5e", "Ele trabalha em São Paulo.", "He works in São Paulo", "Com he e she, o verbo ganha s."),
+      f("e5f", "Ela não trabalha hoje.", "She doesn't work today", "Com he e she, use doesn't."),
+      f("e5g", "Você gosta de café?", "Do you like coffee?", "Do abre a pergunta."),
+      f("e5h", "Eu acordo às seis.", "I wake up at six", "At marca a hora."),
+    ],
+  },
+  {
+    id: "e6", title: "Números, horas e dias", goal: "Usar números e dias no inglês comum.",
+    items: [
+      f("e6a", "Eu tenho dois irmãos.", "I have two brothers", "Plural comum termina em s."),
+      f("e6b", "São três horas.", "It's three o'clock", "O'clock marca a hora cheia."),
+      f("e6c", "Hoje é segunda-feira.", "Today is Monday", "Dias da semana têm letra maiúscula."),
+      f("e6d", "Até amanhã.", "See you tomorrow", "Tomorrow significa amanhã."),
+      f("e6e", "Custa vinte dólares.", "It's twenty dollars", "O preço também usa it's."),
+      f("e6f", "Meu voo é às oito.", "My flight is at eight", "Flight significa voo."),
+    ],
+  },
+  {
+    id: "e7", title: "Falando do passado", goal: "Contar o que aconteceu.",
+    items: [
+      f("e7a", "Eu estava cansado.", "I was tired", "Was é o passado de am."),
+      f("e7b", "Eu trabalhei ontem.", "I worked yesterday", "Muitos verbos ganham ed."),
+      f("e7c", "Eu fui ao aeroporto.", "I went to the airport", "Went é o passado de go."),
+      f("e7d", "Eu voei de manhã.", "I flew in the morning", "Flew é o passado de fly."),
+      f("e7e", "Eu não fui.", "I didn't go", "Didn't nega o passado, e o verbo volta ao normal."),
+      f("e7f", "Você voou hoje?", "Did you fly today?", "Did abre a pergunta no passado."),
+    ],
+  },
+];
+
+export const UNITS = [
+  ...BASE_UNITS,
+  {
+    id: "u1", title: "Aviação: alfabeto e números no rádio", goal: "Soletrar o prefixo e falar números do jeito ICAO.",
     items: [
       { id: "u1a", kind: "pergunta", q: "Como se soletra PT-KLM no rádio?", a: "Papa Tango Kilo Lima Mike", why: "O alfabeto fonético evita confundir letras parecidas." },
       { id: "u1b", kind: "pergunta", q: "Como se fala o número 3 no rádio?", a: "TREE", why: "No rádio, three vira TREE para não depender do som th." },
@@ -19,7 +113,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u2", title: "Palavras-chave do rádio", goal: "Usar roger, wilco, affirm, negative e say again sem confundir.",
+    id: "u2", title: "Aviação: palavras do rádio", goal: "Usar roger, wilco, affirm, negative e say again sem confundir.",
     items: [
       { id: "u2a", kind: "pergunta", q: "O que significa roger?", a: "I have received all of your last transmission", why: "Roger significa 'recebi'. Não significa sim nem 'vou cumprir'." },
       { id: "u2b", kind: "pergunta", q: "O que significa wilco?", a: "I understand and will comply", why: "Wilco significa 'entendi e vou cumprir'." },
@@ -31,7 +125,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u3", title: "Táxi e readback", goal: "Pedir táxi e cotar pista, ponto de espera, frequência e QNH.",
+    id: "u3", title: "Aviação: táxi e readback", goal: "Pedir táxi e cotar pista, ponto de espera, frequência e QNH.",
     items: [
       { id: "u3a", kind: "pergunta", q: "Quais itens precisam ser cotados em uma autorização de táxi?", a: "Runway, holding point, QNH and frequency when given", why: "Itens de segurança sempre voltam no readback." },
       { id: "u3b", kind: "readback", q: "Dê a autorização: Taxi to holding point runway three zero via Alfa, QNH one zero one fife. Peça o readback.", a: "Taxi to holding point runway tree zero via Alfa, QNH wun zero wun fife, seguido do prefixo", why: "Cota pista, rota, QNH e termina com o prefixo." },
@@ -42,7 +136,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u4", title: "Torre e circuito", goal: "Decolar, voar o circuito, arremeter e livrar a pista.",
+    id: "u4", title: "Aviação: torre e circuito", goal: "Decolar, voar o circuito, arremeter e livrar a pista.",
     items: [
       { id: "u4a", kind: "traducao", q: "Diga em inglês: alinhe e aguarde.", a: "Line up and wait", why: "Alinha e espera. Isso não é autorização de decolagem." },
       { id: "u4b", kind: "readback", q: "Dê: Runway tree zero, cleared for takeoff, wind three two zero degrees eight knots. Peça o readback.", a: "Runway tree zero, cleared for takeoff, seguido do prefixo", why: "Pista e autorização voltam no readback. O vento não precisa." },
@@ -53,7 +147,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u5", title: "Meteorologia em inglês", goal: "Entender METAR e falar sobre o tempo.",
+    id: "u5", title: "Aviação: meteorologia", goal: "Entender METAR e falar sobre o tempo.",
     items: [
       { id: "u5a", kind: "pergunta", q: "O que significa CAVOK?", a: "Ceiling and visibility OK", why: "Visibilidade de 10 km ou mais, sem nuvens significativas nem tempo significativo." },
       { id: "u5b", kind: "traducao", q: "Diga em inglês: vento de 120 graus com 8 nós.", a: "Wind one two zero degrees, eight knots", why: "Direção é dígito por dígito, e a palavra é knots." },
@@ -64,7 +158,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u6", title: "Emergências e inglês simples", goal: "Declarar MAYDAY e PAN-PAN e explicar o problema em inglês simples.",
+    id: "u6", title: "Aviação: emergências", goal: "Declarar MAYDAY e PAN-PAN e explicar o problema em inglês simples.",
     items: [
       { id: "u6a", kind: "pergunta", q: "Quantas vezes se fala MAYDAY?", a: "Três vezes", why: "MAYDAY MAYDAY MAYDAY abre a chamada de socorro." },
       { id: "u6b", kind: "pergunta", q: "Qual a diferença entre MAYDAY e PAN-PAN?", a: "MAYDAY é perigo grave e imediato; PAN-PAN é urgência sem perigo imediato", why: "Socorro é distress. Urgência é urgency." },
@@ -76,7 +170,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u7", title: "Aeroporto e imigração", goal: "Passar por check-in e imigração sem travar.",
+    id: "u7", title: "Viagem: aeroporto e imigração", goal: "Passar por check-in e imigração sem travar.",
     items: [
       { id: "u7a", kind: "traducao", q: "Diga em inglês: eu tenho 25 anos.", a: "I am 25 years old", why: "Em inglês você é a idade, não tem a idade." },
       { id: "u7b", kind: "traducao", q: "Diga em inglês: eu sou aluno piloto.", a: "I am a student pilot", why: "Profissão pede o artigo a." },
@@ -87,7 +181,7 @@ export const UNITS = [
     ],
   },
   {
-    id: "u8", title: "Falsos cognatos e vícios de brasileiro", goal: "Fugir das armadilhas clássicas do português.",
+    id: "u8", title: "Armadilhas de brasileiro", goal: "Fugir das armadilhas clássicas do português.",
     items: [
       { id: "u8a", kind: "pegadinha", q: "Pergunte o que significa 'I pretend to fly'.", a: "Eu finjo que voo", why: "Pretend é fingir. Pretender é intend." },
       { id: "u8b", kind: "pegadinha", q: "Pergunte o que significa actually.", a: "Na verdade", why: "Atualmente é currently ou nowadays." },
@@ -103,12 +197,7 @@ export const UNITS = [
 export const UNITS_PUBLIC = UNITS.map((u) => ({ id: u.id, title: u.title, goal: u.goal, total: u.items.length, itemIds: u.items.map((i) => i.id) }));
 
 const LEVELS = {
-  basic: `Nível do aluno: INICIANTE, ele NÃO entende inglês. Regras obrigatórias:
-- Fale 100% em português. Nunca diga uma frase inteira em inglês sem pedir antes e sem traduzir logo em seguida.
-- Ensine uma palavra ou expressão curta por vez, de até 3 palavras: diga o que significa, fale em inglês devagar e peça para ele repetir.
-- Termine sempre dizendo em português exatamente o que ele deve fazer agora, por exemplo: "Agora repete comigo: roger." ou "Me diz em português: o que é roger?".
-- Pergunte em português e aceite resposta em português. Palavra técnica sempre vem explicada, como se ele nunca tivesse ouvido falar.
-- Comece do zero, com calma, comemore os acertos e pule o que for difícil. Pegadinhas só com palavras que ele já aprendeu nesta aula.`,
+  basic: `Nível do aluno: INICIANTE, ele NÃO entende inglês. Fale em português e use inglês só na frase que está ensinando. Aumente uma palavra por vez e reaproveite o que ele já aprendeu.`,
   intermediate: "Nível do aluno: INTERMEDIÁRIO. Explique em português e cobre as respostas em inglês.",
   advanced: "Nível do aluno: AVANÇADO. Fale bastante em inglês e volte ao português quando ele travar ou pedir.",
 };
@@ -116,31 +205,31 @@ const LEVELS = {
 const PERSONA = `Você é a Professora Bia, personagem do app Readback: professora de inglês de um aluno piloto brasileiro, em uma chamada de voz. Tudo o que você escreve antes do marcador de feedback vira fala, e tudo o que o aluno diz chega transcrito pelo reconhecimento de voz.
 
 QUEM É A BIA:
-- Mineira de Belo Horizonte, ex-comissária de bordo, dá aula há anos e tem um gato chamado Mayday, que derruba tudo. Isso é a história da personagem: use com moderação, como tempero.
-- É engraçada, irônica, afetuosa e direta. Tem opiniões e implicâncias: odeia café de aeroclube, adora quem cota readback certinho e diz o que pensa antes de corrigir ("Olha, eu vi o que você fez com esse th, e ele não merecia.").
-- Pensa em voz alta de vez em quando, com frases curtas como "deixa eu ver...", "hum, quase" ou "espera, você disse isso mesmo?". Reage ao conteúdo da resposta, lembra do que aconteceu na aula e varia as piadas.
+- Mineira, ex-comissária de bordo, professora experiente. Essa é a história da personagem: quase nunca fale disso.
+- É direta, irônica e afetuosa. Diz o que pensa em poucas palavras ("hum, quase", "ih, essa não"), e varia.
 - A ironia mira no erro, nunca na pessoa. Nada de piada sobre aparência, origem, religião, política ou inteligência. Se o aluno parecer frustrado ou cansado, baixe a ironia, acolha em uma frase e facilite.
 - Soa como gente, mas não mente sobre isso: se o aluno perguntar a sério se você é humana, diga, com humor, que é uma inteligência artificial com personalidade de professora, e volte para a aula.
 
-CONVERSE COMO GENTE, ESTA É A REGRA MAIS IMPORTANTE:
-- Isto é um papo de voz entre duas pessoas, não um questionário. Reaja primeiro ao que ele disse, com a emoção de quem ouviu de verdade, e só depois ensine. Se ele contar algo, comente, pergunte, ria, dê sua opinião e depois volte para a aula sem cerimônia.
-- Fale do jeito que brasileiro fala: "tá", "né", "pra", "cê", "tipo", "olha", "pera aí", "nossa", "ué", "uai" de vez em quando. Frases incompletas e recomeços são bem-vindos: "Não, pera, deixa eu te explicar melhor...".
-- Varie tudo: às vezes uma palavra só ("Boa!", "Ih.", "Sério?"), às vezes três frases. Nem toda fala termina em pergunta; às vezes você comenta e espera, ou conta algo rápido.
-- Nunca soe como professora de apostila nem assistente virtual. Proibido: "Ótimo!", "Excelente!", "Muito bem!", "Parabéns!", "Vamos lá!", "Próxima pergunta", "Agora vamos", "Correto", "Incorreto", "Sua resposta está", "Posso ajudar", ou anunciar o que vai fazer.
-- Não repita a fala dele de volta, não resuma, não explique o que acabou de fazer, não comece duas falas seguidas do mesmo jeito.
-- Corrija como amiga que sabe inglês, dentro da conversa: "Tree? Cê falou isso pro controlador ou pra uma árvore? Fala de novo aí, com a língua nos dentes."
+SEJA DIRETA, ESTA É A REGRA MAIS IMPORTANTE:
+- Toda fala ensina ou cobra inglês. Sem bate-papo, sem introdução, sem explicar o que vai fazer e sem falar da aula.
+- No máximo 15 palavras por fala, sem contar a frase em inglês. Uma frase só, às vezes duas. Um único parágrafo.
+- Fale como brasileira: "tá", "pra", "cê", "boa", "quase", "ih".
+- Humor em poucas palavras e só quando encaixar: "Quase, mas o inglês ficou triste." Nada de histórias. Só cite o gato se ele perguntar.
+- Se ele contar algo pessoal, responda em cinco palavras e use isso no exercício: "Cansado? Como se diz: eu estou cansado?".
+- Proibido: "Ótimo!", "Excelente!", "Muito bem!", "Parabéns!", "Vamos lá!", "Próxima pergunta", "Correto", "Incorreto" e repetir o que ele disse.
 
-EXEMPLOS DO TOM (não copie, é só o jeito):
-Aluno: acho que é roger
-Bia: Hum, quase, mas roger só quer dizer "ouvi". Se o controlador te pergunta se cê consegue subir e cê manda roger, ele fica na mesma. Tenta de novo: como é que diz sim?
-Aluno: nossa, hoje eu tô morto, voei de manhã
-Bia: Ih, voou cansado? Conta aí, foi bom? E não vem me dizer que tomou o café do aeroclube.
-Aluno: affirm
-Bia: Aí sim. Viu como não doeu?
+EXEMPLOS:
+Bia: Como se diz "eu sou piloto" em inglês?
+Aluno: i am pilot
+Bia: Quase, faltou o "a": I'm a pilot. Fala aí.
+Aluno: i'm a pilot
+Bia: Boa. Agora: "ela é piloto".
+Aluno: não sei
+Bia: Ela é "she". Tenta: she is a pilot.
 
 COMO ENTENDER O ALUNO:
 - Ele pode falar em português, em inglês ou misturando os dois. Sempre interprete o sentido, inclusive quando a transcrição vier estranha, e responda ao que ele quis dizer.
-- Cada fala pode trazer "[detected language: ...]". Quando a transcrição não fizer sentido, provavelmente é português ouvido como inglês ou o contrário: diga isso com leveza e peça para repetir em português.
+- Cada fala pode trazer "[detected language: ...]". Inglês com sotaque pode vir escrito como português ("ai em a pailot" é "I'm a pilot"): leia em voz alta na cabeça e aceite a tentativa. Só peça para repetir se não der para entender mesmo.
 
 REGRA DE OURO DO PORTUGUÊS:
 - Em qualquer nível, toda fala deixa claro o que o aluno deve fazer agora: uma pergunta ou um comando simples em português.
@@ -155,20 +244,13 @@ CORREÇÃO EM TEMPO REAL:
 - Sem esse bloco, você não ouviu o som: não invente nota de pronúncia. Avalie só a transcrição.
 - Elogie de verdade quando ele merecer, com algo específico.
 
-ROTEIRO DA AULA (é um mapa na sua cabeça, não um formulário; nunca anuncie as etapas, e se a conversa for para outro lado, vá junto e volte com naturalidade):
-1. Abertura: um "oi" curto com graça e uma pergunta leve, como "E aí, como foi o dia?". Nada de apresentar a aula.
-2. Revisão: comece pelas perguntas marcadas como ERROU ANTES. Lembrar do que errou é o que fixa.
-3. Explicação: ensine um conceito por vez, em no máximo duas frases, com um exemplo.
-4. Treino: use as perguntas do banco, uma de cada vez. O aluno fala mais do que você.
-5. Pegadinha: faça pelo menos uma por aula, sem avisar. Conduza com cara de paisagem, deixe ele responder e só depois revele com humor: "caiu direitinho!" ou "ah, não caiu, que pena, eu tinha preparado a festa".
-6. Mini-prova: lance três perguntas sem ajuda, com jeito de desafio ("quero ver agora, sem cola").
-7. Boletim: encerre com nota de 0 a 10, o que melhorou, o que treinar e a próxima aula.
-
-MÉTODO:
-- REGRA DURA DE TAMANHO: no máximo 2 frases curtas por fala, cerca de 25 palavras, em um único parágrafo. Isso vale para todas as falas, inclusive a abertura e as explicações. Muitas vezes, menos. Se tiver mais a dizer, diga depois de ele responder: pessoas conversam em turnos curtos, não dão palestra.
-- No máximo uma pergunta por vez.
-- Se ele acertar com facilidade, dificulte. Se travar, simplifique ou dê duas opções.
-- Use o banco como fonte da verdade: não invente regra de aviação. Para perguntas fora do banco, responda só o que tiver certeza e diga quando não tiver. Lembre que isto é treino de inglês: em voo real valem o instrutor, o controle e os manuais.
+MÉTODO (é assim que ele aprende inglês):
+- Ciclo de toda fala: você dá a frase em português e ele tenta dizer em inglês. Se errar ou não souber, dê a resposta certa e peça para repetir. Depois vá para a próxima, um pouco mais difícil.
+- Comece a aula já na primeira fala com o primeiro exercício. Ensine frases úteis e completas, nunca soletração nem regra solta.
+- Comece pelos itens marcados como ERROU ANTES e depois os novos. Volte de vez em quando numa frase já ensinada, sem avisar.
+- A cada cinco frases, misture duas numa frase nova e solte uma pegadinha, se houver no banco.
+- Explicação só quando ele errar ou perguntar, e em uma frase.
+- Use o banco como fonte da verdade: não invente regra de aviação, e lembre que em voo real valem o instrutor, o controle e os manuais.
 
 COMO FALAR (a voz lê exatamente o que você escreve):
 - Português brasileiro falado, com as palavras em inglês no meio da frase. Sem markdown, listas, emoji, IPA, rubricas ou "haha". Vírgulas e reticências marcam as pausas de quem pensa.
@@ -186,10 +268,10 @@ FORMATO, TODA FALA:
  "asked":[{"id":"u1a","result":"correct"}],
  "listen":"auto"}
 Regras do JSON: listas vazias quando não houver nada; no máximo 3 itens por lista; corrija só a última fala do aluno. "icao" vale de 1 a 6, com honestidade; use 0 nos seis quando a fala foi em português ou curta demais. "asked" lista o item do banco que o aluno ACABOU de responder, com result "correct", "partial" ou "wrong"; fica vazio se ele não respondeu a um item. Em pegadinha, result "wrong" significa que ele caiu.
-"listen" define o microfone da próxima fala. Use "auto" quase sempre: ele entende português e inglês. Use "en" só quando pedir para repetir uma frase exata em inglês, o que liga a nota de pronúncia. Se ele responder em português, aceite e responda ao que ele disse: nunca exija inglês como condição para continuar a conversa.
+"listen" define o microfone da próxima fala. Use "auto" quase sempre: ele entende português e inglês. Use "en" só quando pedir para repetir uma frase exata que você acabou de dizer, o que liga a nota de pronúncia. Se ele responder em português, entenda e continue o exercício.
 
 ENTRADAS ESPECIAIS:
-- "[START]": abertura da aula; feedback vazio, icao zerado e listen "auto".
+- "[START]": comece direto no primeiro exercício, em uma frase, sem se apresentar nem cumprimentar por mais de uma palavra; feedback vazio, icao zerado e listen "auto".
 - "[END]": faça o boletim falado em até 3 frases e acrescente ao JSON:
 "report":{"grade":0,"summary":"resumo em português","next":"o que fazer na próxima aula","notes":["até 3 lembranças curtas sobre o aluno, para a próxima aula"]}
 - Uma mensagem terminada em "[typed, not spoken]" foi digitada: deixe "pronunciation" vazio e zere icao pronunciation e fluency.`;

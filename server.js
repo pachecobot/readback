@@ -142,6 +142,7 @@ const VOICES = new Set([
   "en-US-AvaNeural", "en-US-AndrewNeural", "en-US-EmmaNeural", "en-US-BrianNeural",
   "en-US-JennyNeural", "en-US-GuyNeural", "en-GB-SoniaNeural", "en-GB-RyanNeural", "en-AU-NatashaNeural",
 ]);
+for (const v of TEACHER_VOICES) VOICES.add(v);
 const PT_VOICE = TEACHER_VOICES[0];
 // Guarda a voz que funcionou para não pagar a espera das tentativas a cada frase.
 let teacherVoices = TEACHER_VOICES;
@@ -279,7 +280,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "GET" && pathname === "/api/config") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ model: MODEL, needsPassword: Boolean(APP_PASSWORD), azure: Boolean(AZURE_KEY), voices: [...VOICES], scenarios: SCENARIOS, units: UNITS_PUBLIC, teacherVoice: PT_VOICE }));
+    res.end(JSON.stringify({ model: MODEL, needsPassword: Boolean(APP_PASSWORD), azure: Boolean(AZURE_KEY), voices: [...VOICES].filter((v) => !TEACHER_VOICES.includes(v)), scenarios: SCENARIOS, units: UNITS_PUBLIC, teacherVoice: PT_VOICE }));
     return;
   }
   if (req.method === "GET") return serveStatic(req, res);
