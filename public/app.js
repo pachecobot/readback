@@ -1,5 +1,5 @@
 import { DRILLS, PHONETIC, NUMBERS } from "./data.js";
-import { createAzureListener, preloadAzure, openSharedMic, closeSharedMic, summarizeForAI, tipFor, adjustForIcao, scoreClass } from "./pron.js";
+import { createAzureListener, preloadAzure, openSharedMic, closeSharedMic, setMicSink, micContext, summarizeForAI, tipFor, adjustForIcao, scoreClass } from "./pron.js";
 import { createOrb, createMicMeter, burstAt, countUp } from "./fx.js";
 
 const $ = (s) => document.querySelector(s);
@@ -450,7 +450,9 @@ function renderScenarios() {
   const [label, freq] = STATIONS[scenario] || STATIONS.free;
   $("#station-label").textContent = label;
   $("#freq-value").textContent = freq;
-  $("#unit-field").hidden = $("#bia-voice-field").hidden = scenario !== "teacher";
+  $("#unit-field").hidden = scenario !== "teacher";
+  $("#bia-voice-field").hidden = scenario !== "teacher" || Boolean(serverConfig.live);
+  $("#live-voice-field").hidden = scenario !== "teacher" || !serverConfig.live;
   $("#name-field").hidden = scenario !== "teacher" || Boolean(store.data.settings.studentName);
   renderUnits();
   renderProgress();
@@ -613,6 +615,24 @@ function renderProgress() {
     box.append(el("p", "prog-note", "Os níveis são do curso, não um certificado."));
   }
 }
+// Comandos do aluno que a Bia executa: pular aula, trocar capítulo, encerrar.
+function goToChapter(n) {
+  const i = Math.max(0, Math.min(courseUnits().length - 1, Math.round(Number(n)) - 1));
+  if (!Number.isFinite(i)) return false;
+  Object.assign(coursePos(), { chapter: i, lesson: 0 });
+  store.save();
+  return true;
+}
+function runAction(action) {
+  const a = String(action || "");
+  if (a === "next_lesson") advanceCourse();
+  else if (a.startsWith("goto_chapter:")) goToChapter(a.split(":")[1]);
+  else if (a === "end_lesson" && call.active && !call.ending) return void setTimeout(finishCall, 0);
+  else return;
+  if (call.lesson) Object.assign(call.lesson, { unit: currentUnit()?.id, lesson: coursePos().lesson });
+  renderUnits();
+  renderProgress();
+}
 function saveReport(report) {
   if (!report) return;
   const t = store.data.teacher;
@@ -641,6 +661,7 @@ function saveSettings() {
     level: $("#level").value,
     studentName: $("#student-name").value,
     biaVoice: $("#bia-voice").value,
+    liveVoice: $("#live-voice").value,
     callsign: $("#callsign").value,
     ...(useAzure() ? { neuralVoice: $("#voice").value } : { voice: $("#voice").value }),
     rate: $("#rate").value,
@@ -655,6 +676,7 @@ function saveSettings() {
   const s = store.data.settings;
   if (s.level) $("#level").value = s.level;
   if (s.biaVoice) $("#bia-voice").value = s.biaVoice;
+  if (s.liveVoice) $("#live-voice").value = s.liveVoice;
   if (s.studentName) $("#student-name").value = s.studentName;
   if (s.callsign) $("#callsign").value = s.callsign;
   if (s.rate) $("#rate").value = s.rate;
@@ -663,7 +685,7 @@ function saveSettings() {
   if (s.showFeedback != null) $("#show-feedback").checked = s.showFeedback;
   $("#rate-out").textContent = Number($("#rate").value).toFixed(2) + "×";
 })();
-["#level", "#student-name", "#bia-voice", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
+["#level", "#student-name", "#bia-voice", "#live-voice", "#callsign", "#voice", "#voice-corrections", "#ptt", "#show-feedback", "#password"].forEach((s) =>
   $(s).addEventListener("change", () => { saveSettings(); updateCallButtons(); }),
 );
 $("#rate").addEventListener("input", () => {
@@ -1027,6 +1049,7 @@ async function aiTurn(userContent, displayText, pron = null) {
         call.stats.report = feedback.report;
         saveReport(feedback.report);
       }
+      runAction(feedback.action);
     }
     const vals = feedback.icao || {};
     if (CRITERIA.some(([k]) => vals[k] > 0)) {
@@ -1120,7 +1143,7 @@ async function startCall() {
     return;
   }
   unlockAudio();
-  if (useAzure()) {
+  if (useAzure() || (scenario === "teacher" && serverConfig.live)) {
     try {
       await openSharedMic();
     } catch (e) {
@@ -1149,7 +1172,150 @@ async function startCall() {
   openMeter();
   try { call.wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
   if (scenario === "teacher") startClock();
+  if (scenario === "teacher" && serverConfig.live) {
+    setStatus("thinking", "Conectando com a Bia…");
+    try {
+      await startLive();
+    } catch (e) {
+      addBubble("ai", e.message).wrap.classList.add("error");
+      finishCall();
+    }
+    return;
+  }
   await aiTurn(scenario === "teacher" ? startLine() : "[START]", null);
+}
+
+/* ---------- Aula por voz em tempo real (Gemini Live) ---------- */
+const LIVE_TOOLS = [{
+  functionDeclarations: [
+    { name: "registrar_resposta", description: "Registra o resultado da resposta do aluno a um item do conteúdo.", parameters: { type: "OBJECT", properties: { id: { type: "STRING" }, resultado: { type: "STRING", enum: ["correct", "partial", "wrong"] } }, required: ["id", "resultado"] } },
+    { name: "proxima_aula", description: "Avança para a próxima aula quando o aluno pedir para pular ou adiantar. Devolve o conteúdo novo." },
+    { name: "ir_para_capitulo", description: "Vai para o capítulo pedido pelo aluno. Devolve o conteúdo novo.", parameters: { type: "OBJECT", properties: { numero: { type: "INTEGER" } }, required: ["numero"] } },
+    { name: "encerrar_aula", description: "Encerra a aula depois do boletim falado.", parameters: { type: "OBJECT", properties: { nota: { type: "INTEGER" }, resumo: { type: "STRING" }, proxima: { type: "STRING" }, lembrancas: { type: "ARRAY", items: { type: "STRING" } } }, required: ["nota", "resumo"] } },
+  ],
+}];
+const b64 = (buf) => {
+  let s = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+async function lessonContent() {
+  const r = await fetch("api/lesson", { method: "POST", headers: { "content-type": "application/json", "x-app-password": $("#password").value || "" }, body: JSON.stringify({ unit: currentUnit()?.id, lesson: coursePos().lesson }) });
+  return (await r.json()).text || "";
+}
+async function startLive() {
+  const r = await fetch("api/live-start", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-app-password": $("#password").value || "" },
+    body: JSON.stringify({ ...call.lesson, level: $("#level").value, callsign: $("#callsign").value, voice: $("#live-voice").value }),
+  });
+  const cfg = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(cfg.error || `Erro ${r.status}`);
+  const ctx = micContext();
+  const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(cfg.token)}`);
+  const live = { ws, sources: new Set(), playAt: 0, me: null, ai: null, ready: false };
+  call.live = live;
+  const stopVoice = () => {
+    for (const src of live.sources) { try { src.stop(); } catch {} }
+    live.sources.clear();
+    live.playAt = 0;
+  };
+  const play = (data) => {
+    const raw = atob(data);
+    const pcm = new Int16Array(raw.length / 2);
+    for (let i = 0; i < pcm.length; i++) pcm[i] = (raw.charCodeAt(i * 2) | (raw.charCodeAt(i * 2 + 1) << 8)) << 16 >> 16;
+    const buf = ctx.createBuffer(1, pcm.length, 24000);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    live.playAt = Math.max(live.playAt, ctx.currentTime + 0.05);
+    src.start(live.playAt);
+    live.playAt += buf.duration;
+    live.sources.add(src);
+    src.onended = () => {
+      live.sources.delete(src);
+      if (!live.sources.size && call.active) setStatus("listening", "Pode falar, em português ou inglês");
+    };
+    setStatus("speaking", "Bia falando… pode interromper");
+  };
+  const say = (text) => ws.readyState === 1 && ws.send(JSON.stringify({ realtimeInput: { text } }));
+  live.say = say;
+  const onTool = async (fc) => {
+    let response = { ok: true };
+    if (fc.name === "registrar_resposta") {
+      recordAsked([{ id: fc.args?.id, result: fc.args?.resultado }]);
+    } else if (fc.name === "proxima_aula" || fc.name === "ir_para_capitulo") {
+      if (fc.name === "proxima_aula") advanceCourse();
+      else goToChapter(fc.args?.numero);
+      Object.assign(call.lesson, { unit: currentUnit()?.id, lesson: coursePos().lesson });
+      call.startedAt = Date.now();
+      call.warned = false;
+      renderUnits();
+      renderProgress();
+      response = { conteudo: await lessonContent() };
+    } else if (fc.name === "encerrar_aula") {
+      const a = fc.args || {};
+      call.stats.report = { grade: a.nota, summary: a.resumo, next: a.proxima, notes: a.lembrancas || [] };
+      saveReport(call.stats.report);
+      setTimeout(() => call.active && finishCall(), 6000);
+    }
+    ws.send(JSON.stringify({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response }] } }));
+  };
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ setup: {
+      model: `models/${cfg.model}`,
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.voice } } } },
+      systemInstruction: { parts: [{ text: cfg.system }] },
+      tools: LIVE_TOOLS,
+      inputAudioTranscription: {},
+      outputAudioTranscription: {},
+      contextWindowCompression: { slidingWindow: {} },
+    } }));
+  };
+  ws.onmessage = async (ev) => {
+    const msg = JSON.parse(typeof ev.data === "string" ? ev.data : await ev.data.text());
+    if (msg.setupComplete) {
+      live.ready = true;
+      setMicSink((pcm) => ws.readyState === 1 && ws.send(JSON.stringify({ realtimeInput: { audio: { data: b64(pcm), mimeType: "audio/pcm;rate=16000" } } })));
+      say(startLine());
+      return;
+    }
+    if (msg.toolCall) for (const fc of msg.toolCall.functionCalls || []) onTool(fc);
+    const sc = msg.serverContent;
+    if (!sc) return;
+    if (sc.interrupted) stopVoice();
+    if (sc.inputTranscription?.text) {
+      live.me ??= addBubble("me", "");
+      live.me.bubble.textContent += sc.inputTranscription.text;
+      live.ai = null;
+    }
+    if (sc.outputTranscription?.text) {
+      live.ai ??= addBubble("ai", "");
+      live.ai.bubble.textContent += sc.outputTranscription.text;
+      if (live.me) { call.stats.spoken++; live.me = null; }
+      scrollTranscript();
+    }
+    for (const part of sc.modelTurn?.parts || []) if (part.inlineData?.data) play(part.inlineData.data);
+    if (sc.turnComplete) {
+      call.turns++;
+      live.ai = null;
+    }
+  };
+  ws.onclose = (ev) => {
+    stopVoice();
+    if (call.live === live && call.active) {
+      if (!live.ready) addBubble("ai", `Não consegui abrir a aula por voz (${ev.code}${ev.reason ? `: ${ev.reason}` : ""}).`).wrap.classList.add("error");
+      finishCall();
+    }
+  };
+  live.close = () => {
+    setMicSink(null);
+    stopVoice();
+    try { ws.close(); } catch {}
+  };
 }
 
 const LESSON_SEC = 15 * 60;
@@ -1163,6 +1329,7 @@ function startClock() {
     if (left <= 180 && !call.warned) {
       call.warned = true;
       call.timeNote = "\n[TIME: 3 minutes left. Go to the MISSION now.]";
+      if (call.live) { call.live.say("[TIME: faltam 3 minutos. Vá para a MISSÃO.]"); call.timeNote = ""; }
     }
     if (left <= 0) endLesson();
   };
@@ -1171,6 +1338,14 @@ function startClock() {
 }
 function endLesson() {
   if (!call.active || call.ending) return;
+  if (call.live) {
+    // A Bia fala o boletim e chama encerrar_aula; se não chamar, fecha sozinho.
+    call.ending = true;
+    clearInterval(call.timer);
+    call.live.say("[END] Encerre agora: boletim falado e encerrar_aula.");
+    setTimeout(() => call.active && finishCall(), 25000);
+    return;
+  }
   call.ending = true;
   clearInterval(call.timer);
   stopAudioAndListening();
@@ -1187,6 +1362,8 @@ function stopAudioAndListening() {
 }
 
 function finishCall() {
+  call.live?.close();
+  call.live = null;
   stopAudioAndListening();
   closeMeter();
   closeSharedMic();

@@ -47,15 +47,23 @@ export async function openSharedMic() {
     source.connect(node);
     node.connect(mute);
     mute.connect(ctx.destination);
-    mic = { ctx, stream, node, push: null };
+    mic = { ctx, stream, node, push: null, sink: null };
     node.onaudioprocess = (ev) => {
-      if (mic?.push) mic.push.write(toPcm16k(ev.inputBuffer.getChannelData(0), ctx.sampleRate));
+      if (!mic?.push && !mic?.sink) return;
+      const pcm = toPcm16k(ev.inputBuffer.getChannelData(0), ctx.sampleRate);
+      mic.push?.write(pcm);
+      mic.sink?.(pcm);
     };
   } catch (e) {
     ctx.close().catch(() => {});
     throw e;
   }
 }
+// Para a aula do Gemini: recebe o áudio do microfone em PCM de 16 kHz.
+export function setMicSink(fn) {
+  if (mic) mic.sink = fn;
+}
+export const micContext = () => mic?.ctx || null;
 export function closeSharedMic() {
   if (!mic) return;
   mic.stream.getTracks().forEach((t) => t.stop());

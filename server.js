@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt, SCENARIOS } from "./prompts.js";
-import { buildTeacherPrompt, TEACHER_VOICES, UNITS_PUBLIC } from "./teacher.js";
+import { buildTeacherPrompt, lessonText, TEACHER_VOICES, UNITS_PUBLIC } from "./teacher.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +29,10 @@ const MAX_HISTORY = 40;
 const AZURE_KEY = process.env.AZURE_SPEECH_KEY || "";
 const AZURE_REGION = process.env.AZURE_SPEECH_REGION || "eastus";
 const SPEECH_SDK = path.join(here, "node_modules/microsoft-cognitiveservices-speech-sdk/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js");
+// Gemini Live: voz em tempo real, direto entre o navegador e o Google.
+const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+const LIVE_MODEL = process.env.GEMINI_LIVE_MODEL || "gemini-3.8-live";
+const LIVE_VOICES = new Set(["Aoede", "Kore", "Leda", "Zephyr", "Puck", "Charon"]);
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"]);
 
 const client = new Anthropic();
@@ -180,6 +184,46 @@ async function handleTts(req, res) {
   }
 }
 
+// Cria um token de uso único: a chave do Google nunca vai para o navegador.
+async function handleLiveStart(req, res) {
+  if (!checkPassword(req, res)) return;
+  try {
+    if (!GEMINI_KEY) throw new Error("Gemini não configurado.");
+    const body = await readJson(req, 64 * 1024);
+    const now = Date.now();
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+      method: "POST",
+      headers: { "x-goog-api-key": GEMINI_KEY, "content-type": "application/json" },
+      body: JSON.stringify({
+        uses: 1,
+        expireTime: new Date(now + 30 * 60000).toISOString(),
+        newSessionExpireTime: new Date(now + 2 * 60000).toISOString(),
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.name) throw new Error(`Google respondeu ${r.status}: ${j.error?.message || "sem token"}`);
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify({
+      token: j.name,
+      model: LIVE_MODEL,
+      voice: LIVE_VOICES.has(body.voice) ? body.voice : "Aoede",
+      system: buildTeacherPrompt({ ...body, live: true, voiceCorrections: true }),
+    }));
+  } catch (e) {
+    res.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ error: e.message }));
+  }
+}
+
+async function handleLesson(req, res) {
+  if (!checkPassword(req, res)) return;
+  try {
+    const body = await readJson(req, 4 * 1024);
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ text: lessonText(body.unit, body.lesson) }));
+  } catch (e) {
+    res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: e.message }));
+  }
+}
+
 async function handleChat(req, res) {
   if (!checkPassword(req, res)) return;
 
@@ -267,6 +311,8 @@ async function handleChat(req, res) {
 const server = http.createServer((req, res) => {
   const { pathname } = new URL(req.url, "http://x");
   if (req.method === "POST" && pathname === "/api/chat") return rateLimited(req, res, 30) || handleChat(req, res);
+  if (req.method === "POST" && pathname === "/api/live-start") return rateLimited(req, res, 10) || handleLiveStart(req, res);
+  if (req.method === "POST" && pathname === "/api/lesson") return rateLimited(req, res, 30) || handleLesson(req, res);
   if (req.method === "POST" && pathname === "/api/speech-token") return rateLimited(req, res, 30) || handleSpeechToken(req, res);
   if (req.method === "POST" && pathname === "/api/tts") return rateLimited(req, res, 120) || handleTts(req, res);
   if (req.method === "GET" && pathname === "/vendor/speech-sdk.js") {
@@ -278,7 +324,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "GET" && pathname === "/api/config") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ model: MODEL, needsPassword: Boolean(APP_PASSWORD), azure: Boolean(AZURE_KEY), voices: [...VOICES].filter((v) => !TEACHER_VOICES.includes(v)), scenarios: SCENARIOS, units: UNITS_PUBLIC, teacherVoice: PT_VOICE }));
+    res.end(JSON.stringify({ model: MODEL, needsPassword: Boolean(APP_PASSWORD), azure: Boolean(AZURE_KEY), voices: [...VOICES].filter((v) => !TEACHER_VOICES.includes(v)), scenarios: SCENARIOS, units: UNITS_PUBLIC, teacherVoice: PT_VOICE, live: Boolean(GEMINI_KEY) }));
     return;
   }
   if (req.method === "GET") return serveStatic(req, res);
@@ -290,6 +336,7 @@ server.listen(PORT, () => {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
     console.warn("Aviso: ANTHROPIC_API_KEY não definida. O modo Chamada não vai funcionar; o treino de pronúncia funciona sem ela.");
   }
+  console.log(GEMINI_KEY ? `Gemini Live ativo (${LIVE_MODEL}): aula por voz em tempo real.` : "Gemini não configurado: a aula usa Claude e Azure.");
   console.log(AZURE_KEY
     ? `Azure Speech ativo (região ${AZURE_REGION}): nota de pronúncia por som e vozes neurais.`
     : "Aviso: AZURE_SPEECH_KEY não definida. Sem nota de pronúncia por som; usando o reconhecimento do navegador.");

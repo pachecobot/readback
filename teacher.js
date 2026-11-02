@@ -280,6 +280,19 @@ Bia: Boa. Agora: "ela é piloto".
 Aluno: não sei
 Bia: Ela é "she". Tenta: she is a pilot.
 
+COMANDOS DO ALUNO (ele manda na aula):
+- "pula", "próximo", "outro exercício": troque na hora, sem discutir.
+- "próxima aula", "adianta", "já sei isso": avance para a próxima aula.
+- "vai para o capítulo N" ou o nome de um assunto: vá para lá.
+- "encerra", "acabou", "chega por hoje": faça o boletim e encerre.
+- "repete", "mais devagar", "não entendi": repita mais devagar ou explique em português.
+Confirme o comando em poucas palavras ("Beleza, pulando.") e siga. Nunca diga que não pode.
+
+HONESTIDADE SOBRE O QUE VOCÊ OUVIU:
+- Nunca diga que ele falou algo que não está na transcrição e nunca invente palavras na boca dele.
+- Se a transcrição parecer errada ou incompleta, a culpa é do microfone: pergunte "Você disse ...?" em vez de corrigir.
+- Se a resposta dele tiver o sentido certo, aceite como acerto, mesmo com sotaque.
+
 COMO ENTENDER O ALUNO:
 - Ele pode falar em português, em inglês ou misturando os dois. Sempre interprete o sentido, inclusive quando a transcrição vier estranha, e responda ao que ele quis dizer.
 - Cada fala pode trazer "[detected language: ...]". Inglês com sotaque pode vir escrito como português ("ai em a pailot" é "I'm a pilot"): leia em voz alta na cabeça e aceite a tentativa. Só peça para repetir se não der para entender mesmo.
@@ -336,8 +349,10 @@ FORMATO, TODA FALA:
  "icao":{"pronunciation":0,"structure":0,"vocabulary":0,"fluency":0,"comprehension":0,"interaction":0},
  "praise":"elogio curto em português, ou vazio",
  "asked":[{"id":"u1a","result":"correct"}],
- "listen":"auto"}
+ "listen":"auto",
+ "action":""}
 Regras do JSON: listas vazias quando não houver nada; no máximo 3 itens por lista; corrija só a última fala do aluno. "icao" vale de 1 a 6, com honestidade; use 0 nos seis quando a fala foi em português ou curta demais. "asked" lista o item do banco que o aluno ACABOU de responder, com result "correct", "partial" ou "wrong"; fica vazio se ele não respondeu a um item. Em pegadinha, result "wrong" significa que ele caiu.
+"action" executa um comando do aluno: "next_lesson" para avançar de aula, "goto_chapter:N" para ir ao capítulo N, "end_lesson" depois do boletim; vazio nos outros casos.
 "listen" define o microfone da próxima fala. Use "auto" quase sempre: ele entende português e inglês. Use "en" só quando pedir para repetir uma frase exata que você acabou de dizer, o que liga a nota de pronúncia. Se ele responder em português, entenda e continue o exercício.
 
 ENTRADAS ESPECIAIS:
@@ -346,6 +361,23 @@ ENTRADAS ESPECIAIS:
 - "[END]": faça o boletim falado em até 3 frases, com a nota real, e termine com: "Por hoje é isso. Quer fazer mais uma aula?". Acrescente ao JSON:
 "report":{"grade":0,"summary":"resumo em português","next":"o que fazer na próxima aula","notes":["até 3 lembranças curtas sobre o aluno, para a próxima aula"]}
 - Uma mensagem terminada em "[typed, not spoken]" foi digitada: deixe "pronunciation" vazio e zere icao pronunciation e fluency.`;
+
+// Na aula por voz do Gemini, ele fala em áudio e usa ferramentas no lugar do JSON.
+const LIVE_RULES = `MODO VOZ EM TEMPO REAL:
+- Você conversa por áudio. O aluno pode te interromper: pare e escute.
+- Ignore tudo acima sobre ###FEEDBACK###, JSON e "listen": aqui você usa ferramentas.
+- Fale com emoção e ritmo de gente, em português do Brasil, e pronuncie o inglês com clareza, um pouco mais devagar.
+- Depois de cada resposta dele a um item do conteúdo, chame registrar_resposta com o id e o resultado.
+- Para avançar de aula, chame proxima_aula. Para trocar de capítulo, chame ir_para_capitulo. Depois disso, siga o conteúdo que a ferramenta devolver.
+- Para encerrar: fale o boletim em até 3 frases com a nota real, termine com "Por hoje é isso. Quer fazer mais uma aula?" e chame encerrar_aula.
+- Mensagens de texto entre colchetes vêm do aplicativo: [START] abre a aula, com saudação, cobrança da aula pendente e "hoje vamos...", e [TIME] ou [END] avisam o tempo. Obedeça.`;
+
+export function lessonText(unit, lesson) {
+  const u = UNITS.find((x) => x.id === unit) || UNITS[0];
+  const n = Math.max(0, Math.min(lessonsOf(u) - 1, Number(lesson) || 0));
+  const isLast = n === lessonsOf(u) - 1;
+  return `CAPÍTULO ${UNITS.indexOf(u) + 1} DE ${UNITS.length}: ${u.title}. AULA ${n + 1} DE ${lessonsOf(u)}. OBJETIVO: ${u.goal}\nMISSÃO DESTA AULA: ${isLast ? MISSIONS[u.id] : "uma cena curta com as frases de hoje."}\nCONTEÚDO:\n${lessonItems(u, n).map((i) => `- [${i.id}] (${i.kind}) ${i.q} | Resposta: ${i.a} | Por quê: ${i.why}`).join("\n")}`;
+}
 
 const clean = (s, max) => String(s ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, max);
 const cleanList = (v, n, max) => (Array.isArray(v) ? v.slice(0, n).map((x) => clean(x, max)).filter(Boolean) : []);
@@ -360,7 +392,7 @@ const HUMOR = [
   "torcedora exagerada: comemora acerto pequeno como conquista enorme.",
 ];
 
-export function buildTeacherPrompt({ unit, lesson, level, callsign, voiceCorrections, progress, humorSeed, studentName }) {
+export function buildTeacherPrompt({ unit, lesson, level, callsign, voiceCorrections, progress, humorSeed, studentName, live = false }) {
   const u = UNITS.find((x) => x.id === unit) || UNITS[0];
   const lessonNo = Math.max(0, Math.min(lessonsOf(u) - 1, Number(lesson) || 0));
   const items = lessonItems(u, lessonNo);
@@ -383,7 +415,7 @@ export function buildTeacherPrompt({ unit, lesson, level, callsign, voiceCorrect
   const weak = cleanList(p.weak, 8, 40);
   const lessons = Math.max(0, Math.min(9999, Number(p.lessons) || 0));
   return [
-    PERSONA,
+    live ? PERSONA.slice(0, PERSONA.indexOf("FORMATO, TODA FALA:")).replace("Tudo o que você escreve antes do marcador de feedback vira fala, e tudo o que o aluno diz chega transcrito pelo reconhecimento de voz.", "Você ouve a voz dele direto, em tempo real.") + LIVE_RULES : PERSONA,
     LEVELS[level] || LEVELS.intermediate,
     voiceCorrections === false ? "O aluno desligou a correção em voz: corrija só no feedback, exceto erros de segurança." : "",
     `PREFIXO DO ALUNO: ${cs}. AULAS JÁ FEITAS: ${lessons}.`,
